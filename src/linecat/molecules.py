@@ -9,9 +9,9 @@ This module defines:
 Public API (per species)
 ------------------------
 Each `MoleculeInfo` exposes:
-- `standardize_row(row, prefix) -> pd.Series`
-    Normalize/augment a catalog row in place (e.g., compute Ω, parity symbol, v_t,
-    adjust K_a signs, etc.).
+- `standardize(df, prefix) -> pd.DataFrame`
+    Normalize/augment the whole catalog table for one state, column by column (e.g. compute Ω,
+    parity symbol, v_t, adjust K_a signs). It may change `df` in place and returns it.
 - `quantum_label(df, prefix) -> pd.Series`
     Vectorized LaTeX label strings for the chosen state.
 
@@ -20,7 +20,7 @@ the partition function `Q` and temperature `T` .
 
 Add a new species
 -----------------
-1) Implement `<name>_standardize(row, prefix)` and `<name>_label(df, prefix)`.
+1) Implement `<name>_standardize(df, prefix)` (whole columns, no row loop) and `<name>_label(df, prefix)`.
 2) Construct a `MoleculeInfo(...)` with the species’ metadata and these functions.
 3) Register it under its code in `REGISTRY`.
 
@@ -41,10 +41,11 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Callable, Final, Literal, Tuple
 
+import numpy as np
 import pandas as pd
 
 Prefix = Literal["U-S", "L-S"]
-StandardizeFunc = Callable[[pd.Series, Prefix], pd.Series]
+StandardizeFunc = Callable[[pd.DataFrame, Prefix], pd.DataFrame]
 LabelFunc = Callable[[pd.DataFrame, Prefix], pd.Series]
 
 
@@ -64,14 +65,14 @@ class MoleculeInfo:
 
 
 # ---------- OH behavior ----------
-def OH_standardize(row: pd.Series, prefix: Prefix) -> pd.Series:
-    N = int(row[f'{prefix} N'])
-    parity = int(row[f'{prefix} Parity'])
-    J_plus_half = int(row[f'{prefix} J+0.5'])
-    row[f'{prefix} Omega'] = '1/2' if N == J_plus_half else '3/2'
-    row[f'{prefix} J'] = f'{2 * J_plus_half - 1}/2'
-    row[f'{prefix} Parity'] = '-' if parity == 1 else '+'
-    return row
+def OH_standardize(df: pd.DataFrame, prefix: Prefix) -> pd.DataFrame:
+    N = df[f'{prefix} N'].astype(int)
+    parity = df[f'{prefix} Parity'].astype(int)
+    J_plus_half = df[f'{prefix} J+0.5'].astype(int)
+    df[f'{prefix} Omega'] = np.where(N == J_plus_half, '1/2', '3/2')
+    df[f'{prefix} J'] = (2 * J_plus_half - 1).astype(str) + '/2'
+    df[f'{prefix} Parity'] = np.where(parity == 1, '-', '+')
+    return df
 
 
 def OH_label(df: pd.DataFrame, prefix: Prefix) -> pd.Series:
@@ -84,19 +85,15 @@ def OH_label(df: pd.DataFrame, prefix: Prefix) -> pd.Series:
 
 
 # ---------- CH3OH behavior ----------
-def CH3OH_standardize(row: pd.Series, prefix: Prefix) -> pd.Series:
-    v = int(row[f'{prefix} v'])
-    row[f'{prefix} v_t'] = v // 3
+def CH3OH_standardize(df: pd.DataFrame, prefix: Prefix) -> pd.DataFrame:
+    v = df[f'{prefix} v'].astype(int)
     r = v % 3
-    if r == 0:
-        parity = int(row[f'{prefix} A_P'])
-        sym = 'A+' if parity > 0 else 'A-'
-    else:
-        sym = 'E'
-        if r == 2:
-            row[f'{prefix} K_a'] = -int(row[f'{prefix} K_a'])
-    row[f'{prefix} Sym'] = sym
-    return row
+    df[f'{prefix} v_t'] = v // 3
+    a_sym = np.where(df[f'{prefix} A_P'].astype(int) > 0, 'A+', 'A-')
+    df[f'{prefix} Sym'] = np.where(r == 0, a_sym, 'E')
+    k_a = df[f'{prefix} K_a'].astype(int)
+    df[f'{prefix} K_a'] = np.where(r == 2, -k_a, k_a)
+    return df
 
 
 def CH3OH_label(df: pd.DataFrame, prefix: Prefix) -> pd.Series:
@@ -109,8 +106,8 @@ def CH3OH_label(df: pd.DataFrame, prefix: Prefix) -> pd.Series:
 
 
 # ---------- SiO behavior ----------
-def SiO_standardize(row: pd.Series, prefix: Prefix) -> pd.Series:
-    return row
+def SiO_standardize(df: pd.DataFrame, prefix: Prefix) -> pd.DataFrame:
+    return df
 
 
 def SiO_label(df: pd.DataFrame, prefix: Prefix) -> pd.Series:
@@ -119,10 +116,10 @@ def SiO_label(df: pd.DataFrame, prefix: Prefix) -> pd.Series:
     return "$" + J + "\\,(" + v + ")$"
 
 # ---------- NH3 behavior ----------
-def NH3_standardize(row: pd.Series, prefix: Prefix) -> pd.Series:
-    v = int(row[f'{prefix} v'])
-    row[f'{prefix} Parity'] = '-' if v == 1 else '+'
-    return row
+def NH3_standardize(df: pd.DataFrame, prefix: Prefix) -> pd.DataFrame:
+    v = df[f'{prefix} v'].astype(int)
+    df[f'{prefix} Parity'] = np.where(v == 1, '-', '+')
+    return df
 
 
 def NH3_label(df: pd.DataFrame, prefix: Prefix) -> pd.Series:

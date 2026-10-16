@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-10-16
+
+- Converting CDMS catalogs is about 150× faster: CH3OH (38,743 lines) takes under a second instead of about two minutes. The physics is computed on whole columns instead of row by row; the CSVs are byte-for-byte the same as before.
+- The progress dialog of Convert CDMS Catalogs… only shows when a conversion takes more than half a second; the final report is unchanged.
+- For adding a species: `<name>_standardize(df, prefix)` now receives the whole table and returns it (it used to get one row).
+- Tests compare the converter's output with reference CSVs made by the previous converter (`tests/data/cdms/`).
+
 ## 0.2.2 — 2026-10-16
 
 - Fixed a crash on Python 3.10 and 3.11: the wait cursor no longer runs the event loop in the middle of building a diagram, and sciwidgets 0.10.4 (now required) keeps PySide6 6.12.0 away from Python < 3.12, where it crashes on tables.

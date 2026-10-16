@@ -8,6 +8,23 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from linecat.cdms import ConversionCancelled, ConversionResult, convert_molecule_catalog  # noqa: E402
 
 CATALOGS = Path(__file__).resolve().parent.parent / "catalogs"
+SLICES = Path(__file__).resolve().parent / "data" / "cdms"  # 120 lines spread over each .cat file
+
+
+@pytest.mark.parametrize("species", ["OH", "CH3OH", "SiO", "NH3"])
+def test_conversion_matches_reference(species, tmp_path):
+    """Same CSV, byte for byte, as the row-by-row converter of linecat 0.2.2 made from these slices."""
+    result = convert_molecule_catalog(species, outdir=tmp_path, catalogs_dir=SLICES)
+    expected = SLICES / "expected" / f"CDMS_{species}.csv"
+    assert result.path.read_bytes() == expected.read_bytes()
+
+
+def test_full_ch3oh_is_fast(tmp_path):
+    import time
+
+    start = time.perf_counter()
+    result = convert_molecule_catalog("CH3OH", outdir=tmp_path, catalogs_dir=CATALOGS)
+    assert result.rows == 38743 and time.perf_counter() - start < 20
 
 
 def test_progress_callback_and_result(tmp_path):
@@ -17,7 +34,7 @@ def test_progress_callback_and_result(tmp_path):
     assert isinstance(result, ConversionResult) and result.species == "SiO" and result.path.is_file()
     assert calls[0][0] == 0 and calls[-1][0] == calls[-1][1] == result.rows
     assert [d for d, _ in calls] == sorted(d for d, _ in calls)
-    assert len(calls) >= 3
+    assert len(calls) >= 2
 
 
 def test_cancel_stops(tmp_path):

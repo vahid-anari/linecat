@@ -38,8 +38,6 @@ from linecat.molecules import MoleculeInfo, REGISTRY  # provides species metadat
 ProgressFn = Callable[[int, int], None]
 """Called with (rows done, rows total) while a species is converted; raise to stop."""
 
-CHUNK_ROWS = 500
-
 
 class ConversionCancelled(Exception):
     """Raised from a progress callback to stop a conversion."""
@@ -116,16 +114,14 @@ NEW_ORDER: tuple[str, ...] = ("Frequency (MHz)",
 # =============================================================================
 # Helpers
 # =============================================================================
-def _convert_wavenumber_to_kelvin(E_cm: float) -> float:
-    """Convert energy from wavenumbers [cm^-1] to Kelvin."""
+def _convert_wavenumber_to_kelvin(E_cm):
+    """Convert energy from wavenumbers [cm^-1] to Kelvin (scalars or arrays)."""
     return E_cm * h * c / k_B
 
 
-def _calculate_einstein_A_coefficient(
-        I_log10: float, nu_MHz: float, g_up: int, E_up_K: float, E_lo_K: float, Q: float, T: float
-) -> float:
+def _calculate_einstein_A_coefficient(I_log10, nu_MHz, g_up, E_up_K, E_lo_K, Q: float, T: float):
     """
-    Einstein A-coefficient [s^-1].
+    Einstein A-coefficient [s^-1], element-wise on arrays.
 
     Parameters
     ----------
@@ -137,61 +133,66 @@ def _calculate_einstein_A_coefficient(
     Q       : partition function at temperature T
     T       : temperature [K]
     """
-    # Population difference factor
+    # Population difference factor; linear approximation where ΔE is tiny
     R = np.exp(-E_lo_K / T) - np.exp(-E_up_K / T)
-    if np.isclose(R, 0.0):
-        # Linear approximation when ΔE is tiny
-        R = np.exp(-E_lo_K / T) * h * (nu_MHz * 1e6) / (k_B * T)
+    R_linear = np.exp(-E_lo_K / T) * h * (nu_MHz * 1e6) / (k_B * T)
+    R = np.where(np.isclose(R, 0.0), R_linear, R)
     return C_A_ij * (10.0 ** I_log10) * (nu_MHz ** 2) * Q / (g_up * R)
 
 
-def _calculate_transition_dipole(A_ij: float, nu_MHz: float) -> float:
+def _calculate_transition_dipole(A_ij, nu_MHz):
     """Transition dipole moment [Debye] from A_ij and frequency."""
     return C_d_ij * np.sqrt(A_ij / (nu_MHz ** 3))
 
 
-def _calculate_line_strength(d_ij_D: float, g_up: int) -> float:
+def _calculate_line_strength(d_ij_D, g_up):
     """Line strength S_ij [Debye^2]."""
     return (d_ij_D ** 2) * g_up
 
 
-def _process_transition_row(row: pd.Series, molecule_info: MoleculeInfo) -> pd.Series:
+def _formatted(values, spec: str) -> list[str]:
+    return [format(v, spec) for v in values]
+
+
+def _process_transitions(df: pd.DataFrame, molecule_info: MoleculeInfo) -> pd.DataFrame:
     """
-    Enrich a catalog row with derived physics and standardized quantum labels.
+    Add the derived physics and standardized quantum labels to a whole catalog table.
 
     - Applies species-specific standardization (both U-S and L-S).
     - Converts level energies to K.
     - Computes A_ij, d_ij, S_ij.
+    Values are written as text with the same formats as the per-row converter of linecat ≤ 0.2.
     """
+    df = df.copy()
     # Standardize quantum fields (both states)
-    row = molecule_info.standardize(row, "U-S")
-    row = molecule_info.standardize(row, "L-S")
+    df = molecule_info.standardize(df, "U-S")
+    df = molecule_info.standardize(df, "L-S")
 
     # Energies (cm^-1 → K); upper level = lower + ν/c (in cm^-1)
-    E_lo_cm = float(row["L-S E (cm^-1)"])
-    nu_MHz = float(row["Frequency (MHz)"])
+    E_lo_cm = df["L-S E (cm^-1)"].astype(float).to_numpy()
+    nu_MHz = df["Frequency (MHz)"].astype(float).to_numpy()
     E_up_cm = E_lo_cm + (nu_MHz * 1e6 / c)
     E_lo_K = _convert_wavenumber_to_kelvin(E_lo_cm)
     E_up_K = _convert_wavenumber_to_kelvin(E_up_cm)
 
     # Radiative quantities
-    I_log = float(row["Log Intensity (nm^2 MHz)"])
-    g = int(row["g_up"])
+    I_log = df["Log Intensity (nm^2 MHz)"].astype(float).to_numpy()
+    g = df["g_up"].astype(int).to_numpy()
     A_ij = _calculate_einstein_A_coefficient(I_log, nu_MHz, g, E_up_K, E_lo_K, molecule_info.Q, molecule_info.T)
     d_ij = _calculate_transition_dipole(A_ij, nu_MHz)
     S_ij = _calculate_line_strength(d_ij, g)
 
-    # Populate new columns
-    row["Wavelength (cm)"] = f"{c / (nu_MHz * 1e6):.3E}"
-    row["U-S E (cm^-1)"] = f"{E_up_cm:.5f}"
-    row["U-S E (K)"] = f"{E_up_K:.5f}"
-    row["L-S E (K)"] = f"{E_lo_K:.5f}"
-    row["A_ij (s^-1)"] = f"{A_ij:.3E}"
-    row["log_10 A_ij"] = f"{np.log10(A_ij):.5f}"
-    row["tau (s)"] = f"{1.0 / A_ij:.3E}"
-    row["d_ij (D)"] = f"{d_ij:.5f}"
-    row["S_ij mu^2 (D^2)"] = f"{S_ij:.5f}"
-    return row
+    # New columns, as text
+    df["Wavelength (cm)"] = _formatted(c / (nu_MHz * 1e6), ".3E")
+    df["U-S E (cm^-1)"] = _formatted(E_up_cm, ".5f")
+    df["U-S E (K)"] = _formatted(E_up_K, ".5f")
+    df["L-S E (K)"] = _formatted(E_lo_K, ".5f")
+    df["A_ij (s^-1)"] = _formatted(A_ij, ".3E")
+    df["log_10 A_ij"] = _formatted(np.log10(A_ij), ".5f")
+    df["tau (s)"] = _formatted(1.0 / A_ij, ".3E")
+    df["d_ij (D)"] = _formatted(d_ij, ".5f")
+    df["S_ij mu^2 (D^2)"] = _formatted(S_ij, ".5f")
+    return df
 
 
 def _load_cdms_catalog(path: str | Path, columns: Mapping[str, tuple[int, int]]) -> pd.DataFrame:
@@ -256,7 +257,9 @@ def _apply_quantum_names(df: pd.DataFrame, quantum_numbers: Iterable[str], drop_
             new = f"{prefix} {name}"
             if old in df.columns:
                 rename_map[old] = new
-                df[old] = df[old].map(_decode_q_token)
+                # decode each distinct token once
+                codes = {tok: _decode_q_token(tok) for tok in df[old].unique()}
+                df[old] = df[old].map(codes)
 
     df = df.rename(columns=rename_map)
 
@@ -308,8 +311,9 @@ def convert_molecule_catalog(
         Folder that holds the species' `.cat` files (`input_files` are relative
         to it; defaults to the current working directory).
     progress : callable or None
-        Called with (rows done, rows total) every few hundred rows; raising
-        inside it (e.g. `ConversionCancelled`) stops the conversion.
+        Called with (rows done, rows total) after reading and after each input
+        file is processed; raising inside it (e.g. `ConversionCancelled`) stops
+        the conversion before anything is written.
 
     Returns
     -------
@@ -333,15 +337,13 @@ def convert_molecule_catalog(
     if progress is not None:
         progress(done, total)
 
-    # Process the rows in chunks, reporting progress
+    # Process each input file as a whole table, reporting progress
     parts = []
     for df in frames:
-        for start in range(0, len(df), CHUNK_ROWS):
-            chunk = df.iloc[start:start + CHUNK_ROWS]
-            parts.append(chunk.apply(lambda x: _process_transition_row(x, info), axis=1))
-            done += len(chunk)
-            if progress is not None:
-                progress(done, total)
+        parts.append(_process_transitions(df, info))
+        done += len(df)
+        if progress is not None:
+            progress(done, total)
     df_tot = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
     # Compute expanded column order (replace placeholders)

@@ -68,7 +68,7 @@ def convert_with_progress(parent: QWidget, species: list[str], folder: str, on_d
     dialog = QProgressDialog("Preparing…", "Cancel", 0, 100, parent)
     dialog.setWindowTitle("Converting CDMS catalogs")
     dialog.setWindowModality(Qt.WindowModal)
-    dialog.setMinimumDuration(0)
+    dialog.setMinimumDuration(500)  # quick conversions finish before it shows; the report follows anyway
     dialog.setAutoClose(False)
     dialog.setAutoReset(False)
     dialog.setMinimumWidth(420)
