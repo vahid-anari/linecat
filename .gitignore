@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+.idea/
+.vscode/
+.DS_Store
+catalogs/**/*.csv
+catalogs/*.csv
+saved_pdf/

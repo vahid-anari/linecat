@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linecat"
+version = "0.1.0"
+description = "Viewer for CDMS/JPL spectral line catalogs: filter transitions and draw energy-level diagrams"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Vahid Anari", email = "vahid.anari8@gmail.com" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "PySide6>=6.5",
+    "matplotlib>=3.7",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "tqdm>=4.60",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff", "build", "twine"]
+
+[project.scripts]
+linecat = "linecat.main:main"
+
+[project.urls]
+Homepage = "https://github.com/vahid-anari/linecat"
+Source = "https://github.com/vahid-anari/linecat"
+Issues = "https://github.com/vahid-anari/linecat/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
