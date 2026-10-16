@@ -22,23 +22,34 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_progress(species: str, done: int, total: int) -> None:
+    percent = 100 * done // total if total else 100
+    end = "\n" if done >= total else ""
+    print(f"\r{species}: {done:,} / {total:,} lines ({percent}%)", end=end, flush=True)
+
+
 def run_convert(args: argparse.Namespace) -> int:
     from linecat.cdms import convert_all, convert_molecule_catalog
     from linecat.molecules import REGISTRY
 
     outdir = args.output_dir or args.catalogs
-    if not args.species:
-        written = convert_all(args.catalogs, outdir)
-        if not written:
+    if args.species:
+        unknown = [code for code in args.species if code not in REGISTRY]
+        if unknown:
+            print(f"Unknown species: {', '.join(unknown)}. Known: {', '.join(REGISTRY)}", file=sys.stderr)
+            return 2
+        results = [
+            convert_molecule_catalog(code, outdir=outdir, catalogs_dir=args.catalogs,
+                                     progress=lambda d, t, code=code: _print_progress(code, d, t))
+            for code in args.species
+        ]
+    else:
+        results = convert_all(args.catalogs, outdir, progress=_print_progress)
+        if not results:
             print(f"No registered species has all its .cat files in {Path(args.catalogs).resolve()}", file=sys.stderr)
             return 1
-        return 0
-    unknown = [code for code in args.species if code not in REGISTRY]
-    if unknown:
-        print(f"Unknown species: {', '.join(unknown)}. Known: {', '.join(REGISTRY)}", file=sys.stderr)
-        return 2
-    for code in args.species:
-        convert_molecule_catalog(code, outdir=outdir, catalogs_dir=args.catalogs)
+    for result in results:
+        print(f"{result.species}: {result.rows:,} lines -> {result.path}")
     return 0
 
 

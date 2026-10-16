@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Convert CDMS Catalogs… runs in the background with a progress dialog (Cancel keeps the species already done) and ends with a report; `linecat convert` prints its progress; `tqdm` no longer needed. Converting accepts the `catalogs/` folder or one species folder.
 - Code split into modules (`catalog_window`, `filters`, `headers`, `widgets`, `diagram/`); classes renamed `CatalogWindow`, `DiagramWindow`, `DiagramTab`. No change for users.
 
 ## 0.2.0 — 2026-10-16

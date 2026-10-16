@@ -24,19 +24,32 @@ __author__ = "Vahid Anari"
 __license__ = "MIT"
 __version__ = "0.1.0"
 
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Callable, Iterable, Mapping
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 # First party
 from linecat.molecules import MoleculeInfo, REGISTRY  # provides species metadata/behavior
 
-# Enable progress_apply on DataFrames
-tqdm.pandas()
+ProgressFn = Callable[[int, int], None]
+"""Called with (rows done, rows total) while a species is converted; raise to stop."""
+
+CHUNK_ROWS = 500
+
+
+class ConversionCancelled(Exception):
+    """Raised from a progress callback to stop a conversion."""
+
+
+@dataclass(frozen=True)
+class ConversionResult:
+    species: str
+    path: Path
+    rows: int
 
 # =============================================================================
 # Physical constants (cgs)
@@ -209,7 +222,7 @@ def _decode_q_token(tok) -> int | None:
 
     s = str(tok).strip()
     if tok is None or s == "" or s.lower() == "nan" or pd.isna(tok):
-        print("Encountered NaN; replacing with 1000.")
+        # unknown quantum number token: keep the row with a marker value
         return 1000
 
     # digits 0..99
@@ -276,8 +289,12 @@ def species_in_folder(catalogs_dir: str | Path) -> list[str]:
 
 
 def convert_molecule_catalog(
-    molecule_code: str, *, outdir: str | Path | None = None, catalogs_dir: str | Path | None = None
-) -> Path:
+    molecule_code: str,
+    *,
+    outdir: str | Path | None = None,
+    catalogs_dir: str | Path | None = None,
+    progress: ProgressFn | None = None,
+) -> ConversionResult:
     """
     Convert one species from CDMS .cat → CSV using species rules from `REGISTRY`.
 
@@ -290,26 +307,42 @@ def convert_molecule_catalog(
     catalogs_dir : str | Path | None
         Folder that holds the species' `.cat` files (`input_files` are relative
         to it; defaults to the current working directory).
+    progress : callable or None
+        Called with (rows done, rows total) every few hundred rows; raising
+        inside it (e.g. `ConversionCancelled`) stops the conversion.
 
     Returns
     -------
-    Path
-        Path to the written CSV file.
+    ConversionResult
+        Species code, path of the written CSV and its number of lines.
     """
     info: MoleculeInfo = REGISTRY[molecule_code]
     outdir_path = Path(outdir) if outdir is not None else Path.cwd()
     catalogs_path = Path(catalogs_dir) if catalogs_dir is not None else Path.cwd()
 
-    # Process each input file
-    df_tot = pd.DataFrame()
+    # Load every input file first, so the progress total is known
+    frames = []
     for file in info.input_files:
         path = find_cat_file(catalogs_path, file)
         if path is None:
             raise FileNotFoundError(f"{info.species}: {file} not found under {catalogs_path}")
         df = _load_cdms_catalog(path, get_columns_info(info.extra_spaces))
-        df = _apply_quantum_names(df, info.quantum_numbers)
-        df = df.progress_apply(lambda x: _process_transition_row(x, info), axis=1)
-        df_tot = pd.concat([df_tot, df], ignore_index=True)
+        frames.append(_apply_quantum_names(df, info.quantum_numbers))
+    total = sum(len(df) for df in frames)
+    done = 0
+    if progress is not None:
+        progress(done, total)
+
+    # Process the rows in chunks, reporting progress
+    parts = []
+    for df in frames:
+        for start in range(0, len(df), CHUNK_ROWS):
+            chunk = df.iloc[start:start + CHUNK_ROWS]
+            parts.append(chunk.apply(lambda x: _process_transition_row(x, info), axis=1))
+            done += len(chunk)
+            if progress is not None:
+                progress(done, total)
+    df_tot = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
     # Compute expanded column order (replace placeholders)
     placeholders = {
@@ -333,15 +366,24 @@ def convert_molecule_catalog(
     outdir_path.mkdir(parents=True, exist_ok=True)
     output_file = outdir_path / f"CDMS_{info.species}.csv"
     df_sorted.to_csv(output_file, index=False)
-    print(f"Conversion for {info.species} complete! {len(df_sorted)} rows → {output_file}")
-    return output_file
+    return ConversionResult(info.species, output_file, len(df_sorted))
 
 
-def convert_all(catalogs_dir: str | Path | None = None, outdir: str | Path | None = None) -> list[Path]:
-    """Convert every registered species whose `.cat` files are present in `catalogs_dir`."""
+def convert_all(
+    catalogs_dir: str | Path | None = None,
+    outdir: str | Path | None = None,
+    progress: Callable[[str, int, int], None] | None = None,
+) -> list[ConversionResult]:
+    """Convert every registered species whose `.cat` files are present in `catalogs_dir`.
+
+    `progress` is called with (species, rows done, rows total).
+    """
     catalogs_path = Path(catalogs_dir) if catalogs_dir is not None else Path.cwd()
-    return [convert_molecule_catalog(code, outdir=outdir, catalogs_dir=catalogs_path)
-            for code in species_in_folder(catalogs_path)]
+    results = []
+    for code in species_in_folder(catalogs_path):
+        callback = (lambda done, total, code=code: progress(code, done, total)) if progress is not None else None
+        results.append(convert_molecule_catalog(code, outdir=outdir, catalogs_dir=catalogs_path, progress=callback))
+    return results
 
 
 if __name__ == "__main__":

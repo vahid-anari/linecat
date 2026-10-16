@@ -18,7 +18,8 @@ from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
 from linecat import __version__
-from linecat.cdms import convert_molecule_catalog, species_in_folder
+from linecat.cdms import species_in_folder
+from linecat.convert_dialog import convert_with_progress
 from linecat.diagram import DiagramWindow
 from linecat.filters import FrequencyRange
 from linecat.headers import TABLE_FORMATS, filter_label, pretty_header, table_alignment, table_background
@@ -253,10 +254,14 @@ class CatalogWindow(QMainWindow):
             )
             return
         self.status.set_state(f"Converting {', '.join(found)}…")
-        written = [convert_molecule_catalog(code, outdir=folder, catalogs_dir=folder) for code in found]
-        self.status.set_state(f"Converted {', '.join(found)} → {Path(folder).name}/")
-        if len(written) == 1:
-            self.load_file(str(written[0]))
+
+        def done(results):
+            self.status.set_state(f"Converted {', '.join(r.species for r in results)} → {Path(folder).name}/"
+                                  if results else "Nothing converted")
+            if len(results) == 1:
+                self.load_file(str(results[0].path))
+
+        self._convert_worker = convert_with_progress(self, found, folder, done)
 
     def load_table_config(self):
         """Table colors, visible columns and font saved by an earlier run (QSettings 'table/config')."""
