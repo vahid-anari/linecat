@@ -19,17 +19,27 @@ pip install -e ".[dev]"
 linecat
 ```
 
+## Use
+
+```
+linecat                      open the viewer
+linecat catalogs/CDMS_OH.csv open a catalog at start
+linecat convert --catalogs catalogs           convert every species found
+linecat convert OH CH3OH --catalogs catalogs  convert some species
+linecat --version
+```
+
+File → Open Catalog… loads a CSV; the quantum-number filters and the
+frequency range narrow the table; File → Export Table as CSV… writes what is
+shown; Transitions → Show Energy-Level Diagram draws the selected lines
+(hover for ν and τ, double-click a transition for the lines from its lower
+level). Right-click a column header for colours, alignment, font and columns.
+
 ## Catalogs
 
 The CDMS `.cat` sources are in `catalogs/`. Convert them to the CSV files the
-viewer reads with
-
-```
-cd catalogs
-python -m linecat.cdms
-```
-
-The generated CSVs are not committed.
+viewer reads with `linecat convert --catalogs catalogs` (or File → Convert
+CDMS Catalogs… in the app). The generated CSVs are not committed.
 
 ## Tests
 

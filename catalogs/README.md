@@ -5,8 +5,7 @@ CDMS entries (https://cdms.astro.uni-koeln.de/classic/entries/), fixed-width
 them:
 
 ```
-cd catalogs
-python -m linecat.cdms
+linecat convert --catalogs catalogs
 ```
 
 Generated `CDMS_<species>.csv` files are ignored by git.

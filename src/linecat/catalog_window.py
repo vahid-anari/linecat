@@ -19,24 +19,31 @@ from matplotlib.backends.backend_pdf import PdfPages
 from fractions import Fraction
 
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFileDialog,
+    QComboBox, QDialog, QFileDialog,
     QGroupBox, QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
     QVBoxLayout, QWidget, QTabWidget, QTextEdit,
     QSplitter
 )
 
-from sciwidgets.dialogs import AskResult, ask_question, show_information, show_warning
+from sciwidgets.dialogs import AskResult, ask_question, show_about_dialog, show_information, show_warning
 from sciwidgets.formatting import pretty_sci_text
+from sciwidgets.labels import set_latex_enabled
 from sciwidgets.panel import ParameterPage
 from sciwidgets.params import FloatSlider, IntSlider, NumericLineEdit, SliderFeature
 from sciwidgets.plot import ScrollableFigure
 from sciwidgets.table import DataFrameView
-from sciwidgets.window import center_on_screen
+from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
-# External
+from linecat import __version__
+from linecat.cdms import convert_molecule_catalog
+
 from linecat.molecules import MoleculeInfo, REGISTRY  # provides species metadata/behavior
+
+MAX_PLOT_TRANSITIONS = 50  # above this the diagram asks before drawing
+MAX_RECENT = 5
+NATIVE_MENU_BAR = False  # menus inside each window (on macOS the global bar would otherwise be used)
 
 H_STEPS = {
     'h-large': 2,
@@ -55,20 +62,26 @@ BBOX_STYLES = {
     'sec-trs': dict(boxstyle="round,pad=0.3", facecolor='lightblue', edgecolor='darkblue', linewidth=1.5),
 }
 GROUPBOX_MARGIN = [7, 10, 7, 4]  # [left, top, right, bottom]
-# Appended to the sciwidgets style sheet by linecat.main
+# Appended to the sciwidgets style sheet by linecat.main (same rules as Maxwell Bloch Studio)
 APP_STYLE_SHEET = """
-                    QGroupBox {
-                        border: 1.4px solid black;
-                        border-radius: 10px;
-                        margin-top: 5px; /* space above for the title */
-                    }
-                    QGroupBox::title {
-                        subcontrol-origin: border;
-                        subcontrol-position: top center;
-                        padding: 0 6px;
-                        top: -7px;                /* pull into border */
-                    }
-                """
+    QStatusBar { border-top: 1px solid #999999; }
+    QGroupBox {
+        font-size: 16pt;
+        font-family: "Times New Roman";
+        font-weight: bold;
+        border: 1px solid #bcbcbc;
+        border-radius: 6px;
+        margin-top: 12px;
+        padding-top: 8px;
+        background: white;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 10px;
+        bottom: -3px;
+        padding: 0 4px 0 4px;
+    }
+"""
 
 
 # =============================================================================
@@ -291,6 +304,17 @@ class FrequencyRange:
         else:
             self.from_value.set_value(mx)
             self.to_value.set_value(mn)
+
+    def reset(self):
+        """Back to the full range (0 to 1e10 MHz) in MHz, without calling back."""
+        self.unit = 'MHz'
+        self.unit_combo.setCurrentText(self.unit)
+        self.set_range(0.0, 1e10)
+
+    def set_range(self, min_mhz, max_mhz):
+        """Show a range (in MHz) in the fields without calling back."""
+        self.range_value = [float(min_mhz), float(max_mhz)]
+        self._set_line_edit_range()
 
     def update_range(self):
         """
@@ -607,6 +631,7 @@ class PlotWindow(QMainWindow):
         # Variables
         self.molecule_info = molecule_info
         self.latex_available = latex_available
+        self.settings = parent.settings if parent is not None else QSettings('linecat', 'linecat')
         self.df = self.build_compatible_df(df)
         self.tabs_content = []
         # Tabs
@@ -623,12 +648,20 @@ class PlotWindow(QMainWindow):
     def build_layout(self):
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
+        self.menu = MenuBarController(self, {
+            "File": [
+                {"id": "save_pdf", "text": "Save Figure as PDF…", "shortcut": QKeySequence.Save},
+                {"id": "latex_commands", "text": "LaTeX Commands…"},
+            ],
+            "View": [
+                {"id": "secondary", "text": "Secondary Transitions", "checkable": True},
+                {"id": "use_latex", "text": "Use LaTeX for Rendering", "checkable": True,
+                 "enabled": self.latex_available},
+            ],
+        }, native_menubar=NATIVE_MENU_BAR)
+        self.menu.actionTriggered.connect(self.on_menu_action)
         top_layout = QHBoxLayout()
         top_layout.addStretch()
-        top_layout.addWidget(self.make_export_group_box())
-        top_layout.addSpacing(10)
-        top_layout.addWidget(self.make_view_group_box())
-        top_layout.addSpacing(10)
         top_layout.addWidget(self.make_zoom_group_box())
         top_layout.addSpacing(10)
         top_layout.addWidget(self.make_real_scale_group_box())
@@ -636,36 +669,6 @@ class PlotWindow(QMainWindow):
         layout.addLayout(top_layout, 0)
         layout.addWidget(self.tabs, 1)
         self.setCentralWidget(central_widget)
-
-    def make_export_group_box(self):
-        # Buttons
-        self.latex_format_button = create_button("Latex Format", self.latex_format)
-        self.export_pdf_button = create_button("Save Figure", self.export_pdf)
-        # Group Box
-        group_box = QGroupBox("Export")
-        group_layout = QVBoxLayout()
-        group_layout.setContentsMargins(*GROUPBOX_MARGIN)
-        group_layout.addWidget(self.latex_format_button)
-        group_layout.addWidget(self.export_pdf_button)
-        group_box.setLayout(group_layout)
-        return group_box
-
-    def make_view_group_box(self):
-        # Check Boxs
-        self.sec_trs_checkbox = QCheckBox("Secondary Transitions")
-        self.sec_trs_checkbox.setObjectName("sec_trs_checkbox")
-        self.sec_trs_checkbox.toggled.connect(self.on_checkboxes_toggled)
-        self.use_latex_checkbox = QCheckBox("Use Latex for Rendering")
-        self.use_latex_checkbox.setObjectName("use_latex_checkbox")
-        self.use_latex_checkbox.toggled.connect(self.on_checkboxes_toggled)
-        # Group Box
-        group_box = QGroupBox("View")
-        group_layout = QVBoxLayout()
-        group_layout.setContentsMargins(*GROUPBOX_MARGIN)
-        group_layout.addWidget(self.sec_trs_checkbox)
-        group_layout.addWidget(self.use_latex_checkbox)
-        group_box.setLayout(group_layout)
-        return group_box
 
     def make_zoom_group_box(self):
         # Sliders
@@ -700,17 +703,13 @@ class PlotWindow(QMainWindow):
         return group_box
 
     def export_pdf(self):
-        BASE_DIR = Path(__file__).resolve().parent
-        save_path = str(BASE_DIR / "saved_pdf")
-        # Let the user choose a file path
-        path, _ = QFileDialog.getSaveFileName(self, "Save PDF File", save_path, "PDF Files (*.pdf)")
-
+        save_dir = self.settings.value('paths/pdf_dir', '', type=str)
+        path, _ = QFileDialog.getSaveFileName(self, "Save PDF File", save_dir, "PDF Files (*.pdf)")
         if not path:
-            return  # user cancelled
-
-        # Ensure the file name ends in .pdf
+            return
         if not path.lower().endswith(".pdf"):
             path += ".pdf"
+        self.settings.setValue('paths/pdf_dir', str(Path(path).parent))
 
         # Grab the figure from the current tab and save
         idx = self.tabs.currentIndex()
@@ -721,7 +720,6 @@ class PlotWindow(QMainWindow):
         with PdfPages(path) as pdf:
             pdf.savefig(fig)
             pdf.savefig(table_fig)
-        show_information("Success", "Figure saved successfully!", parent=self)
 
     def change_y_positions(self, event):
         coarse_scale_factor = self.coarse_scale_slider.get_value() / 100.
@@ -747,11 +745,18 @@ class PlotWindow(QMainWindow):
             arrow.set_y(ys)
         fig.canvas.draw_idle()
 
-    def on_checkboxes_toggled(self, checked):
+    def on_menu_action(self, _menu_path, action_id, checked):
+        if action_id == 'save_pdf':
+            self.export_pdf()
+        elif action_id == 'latex_commands':
+            self.latex_format()
+        elif action_id in ('secondary', 'use_latex'):
+            self.on_view_toggled(action_id, checked)
+
+    def on_view_toggled(self, action_id, checked):
         idx = self.tabs.currentIndex()
         tab_content = self.tabs_content[idx]
-        sender = self.sender().objectName()
-        if sender == 'sec_trs_checkbox':
+        if action_id == 'secondary':
             tab_content.sec_trs_checkbox = checked
         else:
             tab_content.use_latex_checkbox = checked
@@ -775,24 +780,19 @@ class PlotWindow(QMainWindow):
                 self.use_latex_checkbox_failed(tab_content)
 
         elif comps_exist == -1:
-            if sender == 'sec_trs_checkbox':
+            if action_id == 'secondary':
                 self.sec_trs_checkbox_failed(tab_content)
             else:
                 self.use_latex_checkbox_failed(tab_content)
 
-    def set_checkbox_block_signal(self, checkbox, checked):
-        checkbox.blockSignals(True)
-        checkbox.setChecked(checked)
-        checkbox.blockSignals(False)
-
     def sec_trs_checkbox_failed(self, tab_content):
         show_warning("No Secondary Transition", "No secondary transitions found.", parent=self)
-        self.set_checkbox_block_signal(self.sec_trs_checkbox, False)
+        self.menu.set_checked('secondary', False)
         tab_content.sec_trs_checkbox = False
 
     def use_latex_checkbox_failed(self, tab_content):
         show_warning("LaTeX not available", "LaTeX was not found on this computer.", parent=self)
-        self.set_checkbox_block_signal(self.use_latex_checkbox, False)
+        self.menu.set_checked('use_latex', False)
         tab_content.use_latex_checkbox = False
 
     def latex_format(self):
@@ -846,6 +846,12 @@ class PlotWindow(QMainWindow):
             plt.close(fig)
         del self.tabs_content[idx]
 
+    def closeEvent(self, event):
+        for tab_content in self.tabs_content:
+            for fig in tab_content.figures():
+                plt.close(fig)
+        super().closeEvent(event)
+
     def center_scroll(self):
         self.tabs_content[self.tabs.currentIndex()].scroll.center()
 
@@ -859,8 +865,8 @@ class PlotWindow(QMainWindow):
         zoom = comps['zoom factor']
         coarse_scale_factor = comps['coarse scale factor']
         fine_scale_factor = comps['fine scale factor']
-        self.set_checkbox_block_signal(self.sec_trs_checkbox, sec_trs_checked)
-        self.set_checkbox_block_signal(self.use_latex_checkbox, use_latex_checkbox)
+        self.menu.set_checked('secondary', sec_trs_checked)
+        self.menu.set_checked('use_latex', use_latex_checkbox)
         self.hori_zoom_slider.set_value(round(zoom[0] * 100))
         self.vert_zoom_slider.set_value(round(zoom[1] * 100))
         self.coarse_scale_slider.set_value(round(coarse_scale_factor * 100.))
@@ -889,6 +895,7 @@ class PlotWindow(QMainWindow):
         def make_tr_text(temp_df):
             return temp_df['upper lvl'] + '->' + temp_df['lower lvl']
 
+        df = df.copy()
         transform = self.molecule_info.label
         df['upper lvl'] = transform(df, 'U-S')
         df['lower lvl'] = transform(df, 'L-S')
@@ -991,8 +998,14 @@ class PlotWindow(QMainWindow):
             idx = self.tabs.addTab(tab_content.widget, title)
             self.tabs.setCurrentIndex(idx)
 
-    def build_trs_fig(self, lvls_df, pri_trs_df, sec_trs_df=pd.DataFrame(), use_latex=False):
-        mpl.rcParams["text.usetex"] = use_latex
+    def build_trs_fig(self, lvls_df, pri_trs_df, sec_trs_df=None, use_latex=False):
+        """Build the diagram and table figures; LaTeX rendering is switched on only while building."""
+        if sec_trs_df is None:
+            sec_trs_df = pd.DataFrame()
+        with mpl.rc_context({"text.usetex": use_latex}):
+            return self._build_trs_fig(lvls_df, pri_trs_df, sec_trs_df, use_latex)
+
+    def _build_trs_fig(self, lvls_df, pri_trs_df, sec_trs_df, use_latex):
         tr_arrows = []
         lvls = []
         lvls_text = ""
@@ -1327,52 +1340,43 @@ class DisplayDataApp(QMainWindow):
         Widget for specifying and converting the frequency range.
     table_view : DataFrameView
         Table showing the filtered lines.
-    labels : dict of str → QLabel
-        Labels showing file information and row counts.
+    menu, status : MenuBarController, StatusBarController
+        Menu bar (File, View, Transitions, Help) and status bar (catalog path, line counts).
     """
 
-    def __init__(self):
+    def __init__(self, catalog=None):
         """
-        Initialize the DisplayDataApp window and its UI components.
+        Initialize the main window: menu bar, status bar, filters, frequency range and table.
 
-        Sets up the main window title, geometry, and all interactive widgets,
-        including:
-          - Control buttons for loading data, exporting, and selecting columns
-          - Quantum-state filter group boxes for upper and lower states
-          - FrequencyRange selector widget
-          - QTableWidget for data display and informational labels
-
-        Returns
-        -------
-        None
+        Parameters
+        ----------
+        catalog : str or None
+            CSV catalog to open at start.
         """
         super().__init__()
         self.setWindowTitle("linecat")
 
+        self.settings = QSettings('linecat', 'linecat')
         self.latex_available = latex_available()
+        self.use_latex = self.latex_available and self.settings.value('view/use_latex', True, type=bool)
+        set_latex_enabled(self.use_latex)
         self.molecule_info: MoleculeInfo = REGISTRY['OH']
+        self.catalog_path = None
 
-        # Control buttons
-        self.load_button = create_button("Load File", self.load_file)
-        self.select_columns_button = create_button("Select Columns", self.open_select_columns_dialog)
-        self.export_button = create_button("Export to CSV", self.export_to_csv, enable=False)
-        self.show_transitions_button = create_button("Show Transitions", self.show_button, enable=False)
+        # Menu bar and status bar
+        self.menu = MenuBarController(self, self.menu_spec(), native_menubar=NATIVE_MENU_BAR)
+        self.menu.actionTriggered.connect(self.on_menu_action)
+        self.status = StatusBarController(self, ready_text="No catalog loaded", path_label="Catalog",
+                                          show_memory=False, show_time=False)
 
         # Filters for molecular quantum states
         self.filter_keys = self.molecule_info.filters
         self.filter_page = self.create_filter_page()
 
         # Table for displaying results
-        self.settings = QSettings('linecat', 'linecat')
         self.table_view = DataFrameView()
         self.table_view.set_config(self.load_table_config())
         self.table_view.configChanged.connect(lambda cfg: self.settings.setValue('table/config', json.dumps(cfg)))
-
-        # Information labels
-        self.labels = {
-            "file name": create_label("No data loaded."),
-            "N_rows": create_label("")
-        }
 
         # Frequency-range selector widget
         self.freq_range = FrequencyRange(self.update_range)
@@ -1380,39 +1384,16 @@ class DisplayDataApp(QMainWindow):
         # Layout construction
         main_layout = QVBoxLayout()
         top_layout = QHBoxLayout()
-        top_left = QVBoxLayout()
         self.top_center = QVBoxLayout()
-        top_right = QVBoxLayout()
-
-        # Assemble top controls
-        top_left.addStretch()
-        top_left.addWidget(self.load_button, alignment=Qt.AlignHCenter)
-        top_left.addSpacing(10)
-        top_left.addWidget(self.export_button, alignment=Qt.AlignHCenter)
-        top_left.addSpacing(10)
-        top_left.addWidget(self.show_transitions_button, alignment=Qt.AlignHCenter)
-        top_left.addSpacing(10)
-        top_left.addWidget(self.select_columns_button, alignment=Qt.AlignHCenter)
-        top_left.addStretch()
-
-        self.top_center.addWidget(self.labels["file name"], alignment=Qt.AlignHCenter)
         self.top_center.addWidget(self.filter_page)
-
-        top_right.addWidget(self.freq_range.groupbox)
-
-        top_layout.addStretch(2)
-        top_layout.addLayout(top_left)
         top_layout.addStretch(1)
         top_layout.addLayout(self.top_center)
+        top_layout.addSpacing(20)
+        top_layout.addWidget(self.freq_range.groupbox)
         top_layout.addStretch(1)
-        top_layout.addLayout(top_right)
-        top_layout.addStretch(2)
-
-        # Finish the main layout
         main_layout.addLayout(top_layout, 0)
         main_layout.addSpacing(3)
         main_layout.addWidget(self.table_view, 1)
-        main_layout.addWidget(self.labels["N_rows"], 0, alignment=Qt.AlignHCenter)
 
         container = QWidget()
         container.setLayout(main_layout)
@@ -1425,6 +1406,133 @@ class DisplayDataApp(QMainWindow):
         self.filtered_df = None
 
         center_on_screen(self, (1400, 900), fallback=(1200, 700))
+        if catalog:
+            self.load_file(catalog)
+
+    # ----- menus -----
+    def menu_spec(self):
+        recent = [{"id": f"recent_{i}", "text": Path(p).name} for i, p in enumerate(self.recent_catalogs())]
+        recent += [{"id": "sep"}, {"id": "clear_recent", "text": "Clear Menu", "enabled": bool(recent)}]
+        return {
+            "File": [
+                {"id": "open", "text": "Open Catalog…", "shortcut": QKeySequence.Open},
+                {"submenu": "Open Recent", "items": recent},
+                {"id": "sep"},
+                {"id": "export", "text": "Export Table as CSV…", "shortcut": "Ctrl+E", "enabled": False},
+                {"id": "convert", "text": "Convert CDMS Catalogs…"},
+                {"id": "sep"},
+                {"id": "quit", "text": "Quit", "shortcut": QKeySequence.Quit},
+            ],
+            "View": [
+                {"id": "choose_columns", "text": "Choose Columns…", "enabled": False},
+                {"id": "reset_filters", "text": "Reset Filters", "enabled": False},
+                {"id": "sep"},
+                {"id": "use_latex", "text": "Use LaTeX for Labels", "checkable": True, "checked": self.use_latex,
+                 "enabled": self.latex_available},
+            ],
+            "Transitions": [
+                {"id": "show_diagram", "text": "Show Energy-Level Diagram", "shortcut": "Ctrl+D", "enabled": False},
+            ],
+            "Help": [
+                {"id": "about", "text": "About linecat"},
+            ],
+        }
+
+    def on_menu_action(self, _menu_path, action_id, checked):
+        if action_id == 'open':
+            self.load_file()
+        elif action_id.startswith('recent_'):
+            recent = self.recent_catalogs()
+            index = int(action_id.split('_')[1])
+            if index < len(recent):
+                self.load_file(recent[index])
+        elif action_id == 'clear_recent':
+            self.settings.setValue('recent', json.dumps([]))
+            self.rebuild_menus()
+        elif action_id == 'export':
+            self.export_to_csv()
+        elif action_id == 'convert':
+            self.convert_catalogs()
+        elif action_id == 'quit':
+            self.close()
+        elif action_id == 'choose_columns':
+            self.open_select_columns_dialog()
+        elif action_id == 'reset_filters':
+            self.reset_filters()
+        elif action_id == 'use_latex':
+            self.set_use_latex(checked)
+        elif action_id == 'show_diagram':
+            self.show_button()
+        elif action_id == 'about':
+            self.show_about()
+
+    def rebuild_menus(self):
+        """Rebuild the menu bar (after a change of the recent list) and restore the dynamic states."""
+        self.menu.set_menu_spec(self.menu_spec(), native_menubar=NATIVE_MENU_BAR)
+        self.set_loaded_actions_enabled(self.df is not None)
+
+    def set_loaded_actions_enabled(self, enabled):
+        for action_id in ('export', 'choose_columns', 'reset_filters', 'show_diagram'):
+            self.menu.set_enabled(action_id, enabled)
+
+    def recent_catalogs(self):
+        try:
+            recent = json.loads(self.settings.value('recent', '[]', type=str))
+        except ValueError:
+            return []
+        return [p for p in recent if isinstance(p, str)][:MAX_RECENT]
+
+    def add_recent_catalog(self, path):
+        recent = [p for p in self.recent_catalogs() if p != path]
+        self.settings.setValue('recent', json.dumps([path] + recent[:MAX_RECENT - 1]))
+        self.rebuild_menus()
+
+    def set_use_latex(self, enabled):
+        """Render the filter labels with LaTeX (when available) or with mathtext."""
+        self.use_latex = bool(enabled) and self.latex_available
+        self.settings.setValue('view/use_latex', self.use_latex)
+        set_latex_enabled(self.use_latex)
+        self.set_filter_keys()
+        if self.ranged_df is not None:
+            self.load = True
+            self.update_filters()
+
+    def reset_filters(self):
+        """All quantum-number filters back to 'All' and the full frequency range."""
+        if self.df is None:
+            return
+        self.load = True
+        self.freq_range.reset()
+        self.update_range([0, 'max'])
+
+    def show_about(self):
+        show_about_dialog(
+            "About linecat",
+            f"<p><b>linecat</b> {__version__}<br>Viewer for CDMS/JPL spectral line catalogs.</p>"
+            "<p>Vahid Anari — MIT License<br>"
+            '<a href="https://github.com/vahid-anari/linecat">github.com/vahid-anari/linecat</a></p>'
+            '<p>Catalog data: <a href="https://cdms.astro.uni-koeln.de/">CDMS</a>, Universität zu Köln.</p>',
+            parent=self,
+        )
+
+    def convert_catalogs(self):
+        """Convert the CDMS .cat files of every registered species found in a folder to CSV."""
+        start_dir = self.settings.value('paths/catalogs_dir', '', type=str)
+        folder = QFileDialog.getExistingDirectory(self, "Folder with the CDMS .cat files", start_dir)
+        if not folder:
+            return
+        self.settings.setValue('paths/catalogs_dir', folder)
+        found = [code for code, info in REGISTRY.items()
+                 if all((Path(folder) / f).is_file() for f in info.input_files)]
+        if not found:
+            show_warning("Nothing to convert",
+                         "No registered species has all its .cat files in that folder.", parent=self)
+            return
+        self.status.set_state(f"Converting {', '.join(found)}…")
+        written = [convert_molecule_catalog(code, outdir=folder, catalogs_dir=folder) for code in found]
+        self.status.set_state(f"Converted {', '.join(found)} → {Path(folder).name}/")
+        if len(written) == 1:
+            self.load_file(str(written[0]))
 
     def load_table_config(self):
         """Table colors, visible columns and font saved by an earlier run (QSettings 'table/config')."""
@@ -1504,6 +1612,7 @@ class DisplayDataApp(QMainWindow):
         min_val, max_val = range_vals
         if max_val == 'max':
             max_val = float(self.df['Frequency (MHz)'].astype(float).max())
+            self.freq_range.set_range(min_val, max_val)
         df = self.df.astype({'Frequency (MHz)': float})
         self.ranged_df = df[(df['Frequency (MHz)'] >= float(min_val))
                             & (df['Frequency (MHz)'] <= float(max_val))]
@@ -1529,6 +1638,8 @@ class DisplayDataApp(QMainWindow):
         combos = self.filter_combos
         if self.load:
             current = {k: 'All' for k in combos}
+            for combo in combos.values():
+                combo.set_value('All')
             self.load = False
         else:
             current = {k: combo.get_value() for k, combo in combos.items()}
@@ -1553,52 +1664,51 @@ class DisplayDataApp(QMainWindow):
                 sorted_vals = sorted(vals, key=str)
             combo.set_items(['All'] + [str(v) for v in sorted_vals], current=current.get(key, 'All'))
 
-    def load_file(self):
+    def load_file(self, path=None):
         """
-        Prompt the user to select a CSV file and load it into a DataFrame.
+        Load a CSV catalog into a DataFrame (asks for the file when ``path`` is None).
 
-        Opens a file dialog for CSV selection, reads the chosen file into `self.df`,
-        initializes filter keys based on molecule type, applies the full frequency
-        range, and enables the export button.
+        Reads the file into `self.df`, picks the molecule from its `Species`
+        column, rebuilds the filters, applies the full frequency range and
+        enables the catalog-dependent menu items.
 
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        pandas.errors.EmptyDataError
-            If the selected CSV file is empty or invalid.
+        Parameters
+        ----------
+        path : str or None
+            CSV file; ``None`` opens a file dialog in the last-used folder.
         """
-        BASE_DIR = Path(__file__).resolve().parent
-        open_path = str(BASE_DIR / "Molecules_Information")
-        path, _ = QFileDialog.getOpenFileName(self, "Open File", open_path, "CSV Files (*.csv)")
-        if not path:
+        if path is None:
+            open_dir = self.settings.value('paths/open_dir', '', type=str)
+            path, _ = QFileDialog.getOpenFileName(self, "Open Catalog", open_dir, "CSV Files (*.csv)")
+            if not path:
+                return
+        try:
+            df = pd.read_csv(path, dtype=str)
+        except (OSError, ValueError, pd.errors.ParserError) as exc:
+            show_warning("Cannot open catalog", f"{Path(path).name}: {exc}", parent=self)
             return
-
-        df = pd.read_csv(path, dtype=str)
         if df.empty:
-            self.labels['file name'].setText(f"The file {Path(path).name} is empty!")
-            show_warning("Failed", "Loaded file is empty.", parent=self)
+            show_warning("Failed", f"{Path(path).name} is empty.", parent=self)
             return
 
         self.df = df
         self.load = True
-        if self.check_molecule_info():
-            self.set_filter_keys()
-            self.update_range([0, 'max'])
-            self.export_button.setEnabled(True)
-            self.show_transitions_button.setEnabled(True)
-            self.labels['file name'].setText(f"{df.shape[0]} lines from '{Path(path).name}' loaded.")
-        else:
-            show_warning("Failed", "Loaded file is empty, unknown or invalid.", parent=self)
+        if not self.check_molecule_info():
+            self.df = None
+            show_warning("Failed", f"{Path(path).name}: unknown species or not a linecat catalog.", parent=self)
+            return
+        self.catalog_path = path
+        self.settings.setValue('paths/open_dir', str(Path(path).parent))
+        self.add_recent_catalog(path)
+        self.status.set_path(path)
+        self.set_filter_keys()
+        self.update_range([0, 'max'])
+        self.set_loaded_actions_enabled(True)
 
     def open_select_columns_dialog(self):
         """Open the table's column chooser (also in the header's right-click menu)."""
-        if self.df is None:
-            show_warning("Error", "Load a file first!", parent=self)
-            return
-        self.table_view.choose_columns()
+        if self.df is not None:
+            self.table_view.choose_columns()
 
     def display_table(self):
         if self.filtered_df is None:
@@ -1611,7 +1721,7 @@ class DisplayDataApp(QMainWindow):
             alignments=table_alignment,
             headers={col: pretty_header(col) for col in df.columns},
         )
-        self.labels['N_rows'].setText(f"Displaying {len(df)} rows.")
+        self.status.set_state(f"{len(df):,} of {len(self.df):,} lines")
 
     def export_to_csv(self):
         """
@@ -1625,30 +1735,32 @@ class DisplayDataApp(QMainWindow):
         None
         """
         if self.df is None:
-            show_warning("Error", "No data to export!", parent=self)
             return
-
-        path, _ = QFileDialog.getSaveFileName(self, "Save CSV File", "", "CSV Files (*.csv)")
+        export_dir = self.settings.value('paths/export_dir', '', type=str)
+        path, _ = QFileDialog.getSaveFileName(self, "Export Table as CSV", export_dir, "CSV Files (*.csv)")
         if path:
+            if not path.lower().endswith('.csv'):
+                path += '.csv'
+            self.settings.setValue('paths/export_dir', str(Path(path).parent))
             self.table_view.export_csv(path)
-            show_information("Success", "Data exported successfully!", parent=self)
+            self.status.set_state(f"Exported {len(self.table_view.visible_frame()):,} lines to {Path(path).name}")
 
     def show_button(self):
         """
             Show the PlotWindow if the number of filtered transitions is acceptable.
 
-            Displays a warning message if there are more than 100 transitions,
+            Asks before drawing when there are more than MAX_PLOT_TRANSITIONS transitions,
             asking the user whether to continue.
             """
-        if self.filtered_df.empty:
+        if self.filtered_df is None or self.filtered_df.empty:
             show_warning("No Transition", "There are no transitions. Nothing to display.", parent=self)
-        elif len(self.filtered_df) <= 50:
+        elif len(self.filtered_df) <= MAX_PLOT_TRANSITIONS:
             self.plot_window = PlotWindow(self, self.df.copy(), self.filtered_df.copy(), self.molecule_info,
                                           self.latex_available)
         else:
             reply = ask_question(
                 "Large Number of Transitions",
-                "You are trying to plot more than 50 transitions.",
+                f"You are trying to plot more than {MAX_PLOT_TRANSITIONS} transitions.",
                 "This may slow down the rendering. Do you want to continue?",
                 yes_btn_label="Continue",
                 parent=self,

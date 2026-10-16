@@ -260,7 +260,9 @@ def _apply_quantum_names(df: pd.DataFrame, quantum_numbers: Iterable[str], drop_
     return df
 
 
-def convert_molecule_catalog(molecule_code: str, *, outdir: str | Path | None = None) -> Path:
+def convert_molecule_catalog(
+    molecule_code: str, *, outdir: str | Path | None = None, catalogs_dir: str | Path | None = None
+) -> Path:
     """
     Convert one species from CDMS .cat → CSV using species rules from `REGISTRY`.
 
@@ -270,6 +272,9 @@ def convert_molecule_catalog(molecule_code: str, *, outdir: str | Path | None = 
         Key in REGISTRY (e.g., "OH", "CH3OH").
     outdir : str | Path | None
         Directory to write the CSV (defaults to current working directory).
+    catalogs_dir : str | Path | None
+        Folder that holds the species' `.cat` files (`input_files` are relative
+        to it; defaults to the current working directory).
 
     Returns
     -------
@@ -278,11 +283,12 @@ def convert_molecule_catalog(molecule_code: str, *, outdir: str | Path | None = 
     """
     info: MoleculeInfo = REGISTRY[molecule_code]
     outdir_path = Path(outdir) if outdir is not None else Path.cwd()
+    catalogs_path = Path(catalogs_dir) if catalogs_dir is not None else Path.cwd()
 
     # Process each input file
     df_tot = pd.DataFrame()
     for file in info.input_files:
-        df = _load_cdms_catalog(file, get_columns_info(info.extra_spaces))
+        df = _load_cdms_catalog(catalogs_path / file, get_columns_info(info.extra_spaces))
         df = _apply_quantum_names(df, info.quantum_numbers)
         df = df.progress_apply(lambda x: _process_transition_row(x, info), axis=1)
         df_tot = pd.concat([df_tot, df], ignore_index=True)
@@ -313,8 +319,15 @@ def convert_molecule_catalog(molecule_code: str, *, outdir: str | Path | None = 
     return output_file
 
 
+def convert_all(catalogs_dir: str | Path | None = None, outdir: str | Path | None = None) -> list[Path]:
+    """Convert every registered species whose `.cat` files are present in `catalogs_dir`."""
+    catalogs_path = Path(catalogs_dir) if catalogs_dir is not None else Path.cwd()
+    written = []
+    for code, info in REGISTRY.items():
+        if all((catalogs_path / f).is_file() for f in info.input_files):
+            written.append(convert_molecule_catalog(code, outdir=outdir, catalogs_dir=catalogs_dir))
+    return written
+
+
 if __name__ == "__main__":
-    # convert_molecule_catalog("OH")
-    # convert_molecule_catalog("CH3OH")
-    # convert_molecule_catalog("SiO")
-    convert_molecule_catalog("NH3")
+    convert_all()
