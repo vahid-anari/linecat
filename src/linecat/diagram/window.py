@@ -384,7 +384,7 @@ class DiagramWindow(QMainWindow):
 
         upper_lvls_df = extract_unique(df, 'upper lvl', 'upper E')
         lower_lvls_df = extract_unique(df, 'lower lvl', 'lower E')
-        new_lower_lvls = lower_lvls_df[~lower_lvls_df['level'].isin(upper_lvls_df['level'])]
+        new_lower_lvls = lower_lvls_df[~lower_lvls_df['level'].isin(upper_lvls_df['level'])].copy()
         upper_lvls_df['up'] = 1 if sec else 2
         new_lower_lvls['up'] = 0 if sec else 1
         all_lvls_df = pd.concat([upper_lvls_df, new_lower_lvls], ignore_index=True)

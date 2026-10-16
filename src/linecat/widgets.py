@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from contextlib import contextmanager
 
-from PySide6.QtCore import QEventLoop, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLabel, QPushButton, QSizePolicy
 
 from sciwidgets.params import FloatSlider, IntSlider, SliderFeature
@@ -45,16 +45,21 @@ def latex_available() -> bool:
 
 
 @contextmanager
-def busy(status=None, message=None):
-    """Wait cursor (and a busy status-bar message) while a slow step runs on the GUI thread."""
+def busy(window=None, message=None):
+    """Wait cursor (and a busy status-bar message) while a slow step runs on the GUI thread.
+
+    The status bar is repainted directly: running the event loop here (processEvents) also runs
+    pending deletions in the middle of a build, which crashed the tests on Python 3.10.
+    """
     QApplication.setOverrideCursor(Qt.WaitCursor)
-    if status is not None and message:
-        status.set_state(message, busy=True)
-    QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)  # show cursor and message now
+    if window is not None and message:
+        window.status.set_state(message, busy=True)
+        window.statusBar().repaint()
     try:
         yield
     finally:
         QApplication.restoreOverrideCursor()
+
 
 def make_slider(label, min_val, max_val, init_val, val_fmt=None):
     """Percent slider without range labels or context menu (zoom and scale controls); upright name."""

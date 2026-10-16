@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 — 2026-10-16
+
+- Fixed a crash on Python 3.10 and 3.11: the wait cursor no longer runs the event loop in the middle of building a diagram, and sciwidgets 0.10.4 (now required) keeps PySide6 6.12.0 away from Python < 3.12, where it crashes on tables.
+- Removed a pandas `SettingWithCopyWarning` when building the diagram levels.
+
 ## 0.2.1 — 2026-10-16
 
 - Convert CDMS Catalogs… runs in the background with a progress dialog (Cancel keeps the species already done) and ends with a report; `linecat convert` prints its progress; `tqdm` no longer needed. Converting accepts the `catalogs/` folder or one species folder.

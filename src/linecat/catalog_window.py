@@ -389,7 +389,7 @@ class CatalogWindow(QMainWindow):
             path, _ = QFileDialog.getOpenFileName(self, "Open Catalog", open_dir, "CSV Files (*.csv)")
             if not path:
                 return
-        with busy(self.status, f"Loading {Path(path).name}…"):
+        with busy(self, f"Loading {Path(path).name}…"):
             self._load_file(path)
 
     def _load_file(self, path):
