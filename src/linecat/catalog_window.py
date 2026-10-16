@@ -1,7 +1,6 @@
 from __future__ import annotations
-from typing import Iterable, List
-
 # Standard library
+import json
 import re
 import shutil
 
@@ -17,20 +16,24 @@ from matplotlib.transforms import blended_transform_factory, offset_copy
 from matplotlib.backends.backend_pdf import PdfPages
 
 # Qt / PySide6
-from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
-from PySide6.QtGui import QBrush, QColor, QGuiApplication
+from fractions import Fraction
+
+from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QGridLayout,
+    QCheckBox, QComboBox, QDialog, QFileDialog,
     QGroupBox, QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
-    QVBoxLayout, QWidget, QTabWidget, QScrollArea, QTextEdit,
-    QSplitter, QTableView
+    QVBoxLayout, QWidget, QTabWidget, QTextEdit,
+    QSplitter
 )
 
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-
 from sciwidgets.dialogs import AskResult, ask_question, show_information, show_warning
-from sciwidgets.labels import MathLabel
+from sciwidgets.formatting import pretty_sci_text
+from sciwidgets.panel import ParameterPage
 from sciwidgets.params import FloatSlider, IntSlider, NumericLineEdit, SliderFeature
+from sciwidgets.plot import ScrollableFigure
+from sciwidgets.table import DataFrameView
+from sciwidgets.window import center_on_screen
 
 # External
 from linecat.molecules import MoleculeInfo, REGISTRY  # provides species metadata/behavior
@@ -71,50 +74,33 @@ APP_STYLE_SHEET = """
 # =============================================================================
 # Utility Classes
 # =============================================================================
-class DataFrameModel(QAbstractTableModel):
-    def __init__(self, df, parent=None):
-        super().__init__(parent)
-        self._df = df
-        self._headers = convert_header(list(df.columns))
-        self._brushes = {
-            'U': QBrush(QColor('tan')),
-            'L': QBrush(QColor('lightskyblue')),
-            'other': QBrush(QColor('white')),
-        }
+TABLE_BACKGROUNDS = {'U-': 'tan', 'L-': 'lightskyblue'}
+TABLE_FORMATS = {
+    'Frequency (MHz)': lambda v: f"{float(v):,.3f}",
+    'Error (MHz)': lambda v: f"{float(v):.4f}",
+    'tau (s)': lambda v: pretty_sci_text(float(v), 4),
+    'A_ij (s^-1)': lambda v: pretty_sci_text(float(v), 4),
+    'U-S E (cm^-1)': lambda v: f"{float(v):,.5f}",
+    'L-S E (cm^-1)': lambda v: f"{float(v):,.5f}",
+    'U-S E (K)': lambda v: f"{float(v):,.5f}",
+    'L-S E (K)': lambda v: f"{float(v):,.5f}",
+}
 
-    def rowCount(self, parent=QModelIndex()):
-        return len(self._df)
 
-    def columnCount(self, parent=QModelIndex()):
-        return self._df.shape[1]
+TEXT_COLUMNS = ('Species', 'Sym', 'Parity')
 
-    def data(self, index, role=Qt.DisplayRole):
-        if not index.isValid():
-            return None
-        col = self._df.columns[index.column()]
-        if role == Qt.DisplayRole:
-            val = self._df.iat[index.row(), index.column()]
-            if col == 'Frequency (MHz)':
-                return f"{float(val):,.3f}"
-            if col.startswith('U-S E') or col.startswith('L-S E'):
-                return f"{float(val):,.5f}"
-            return str(val)
-        if role == Qt.TextAlignmentRole:
-            return int(Qt.AlignRight | Qt.AlignVCenter)
-        if role == Qt.BackgroundRole:
-            if col.startswith('U-'):
-                return self._brushes['U']
-            if col.startswith('L-'):
-                return self._brushes['L']
-            return self._brushes['other']
-        return None
 
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if role != Qt.DisplayRole:
-            return None
-        if orientation == Qt.Horizontal:
-            return self._headers[section]
-        return str(section + 1)
+def table_alignment(column):
+    """Right-align everything but the text columns (species, symmetry, parity)."""
+    return 'center' if column.split(' ')[-1] in TEXT_COLUMNS else 'right'
+
+
+def table_background(column):
+    """Background of a catalog column: tan for the upper state, blue for the lower state."""
+    for prefix, color in TABLE_BACKGROUNDS.items():
+        if column.startswith(prefix):
+            return color
+    return None
 
 
 class FrequencyRange:
@@ -178,7 +164,6 @@ class FrequencyRange:
             'Frequency Unit',
             items=list(self.units_dict.keys()),
             item=self.unit,
-            math=False
         )
         self.apply_button = create_button('Apply', self.update_range)
 
@@ -501,24 +486,6 @@ class TransitionArrow:
         return fr"$\nu = {freq}\,\mathrm{{{unit}Hz}}\, , \tau = {m}\times 10^{{{int(e)}}} (s)$"
 
 
-class ScrollableCanvas(FigureCanvasQTAgg):
-    def wheelEvent(self, event):
-        # find the enclosing QScrollArea
-        parent = self.parent()
-        while parent and not isinstance(parent, QScrollArea):
-            parent = parent.parent()
-        if parent:
-            # scroll vertically
-            sb = parent.verticalScrollBar()
-            sb.setValue(sb.value() - event.angleDelta().y())
-            # scroll horizontally
-            sbh = parent.horizontalScrollBar()
-            sbh.setValue(sbh.value() - event.angleDelta().x())
-        else:
-            # no scroll area? fall back
-            super().wheelEvent(event)
-
-
 class TabContent:
     def __init__(self, fig, ax, latex_txt, lvls, arrows, lvls_df, trs_df, table_fig):
         self.comps_dict = {
@@ -526,8 +493,8 @@ class TabContent:
                 'fig': fig,
                 'table_fig': table_fig,
                 'ax': ax,
-                'canvas': ScrollableCanvas(fig),
-                'table_canvas': ScrollableCanvas(table_fig),
+                'scroll': ScrollableFigure(fig),
+                'table_scroll': ScrollableFigure(table_fig),
                 'latex text': latex_txt,
                 'lvls': lvls,
                 'arrows': arrows,
@@ -536,21 +503,18 @@ class TabContent:
                 'zoom factor': [1., 1.],
                 'coarse scale factor': 0.,
                 'fine scale factor': 0.,
-                'origin size': fig.get_size_inches(),
             }
         }
-        self.canvas = self.comps_dict['pri']['canvas']
-        self.table_canvas = self.comps_dict['pri']['table_canvas']
-        self.scroll = self._create_scroll(self.canvas)
-        self.table_scroll = self._create_scroll(self.table_canvas)
+        self.scroll = self.comps_dict['pri']['scroll']
+        self.table_scroll = self.comps_dict['pri']['table_scroll']
         self.widget = QWidget()
         self.layout = QVBoxLayout(self.widget)
-        splitter = QSplitter(Qt.Vertical)
-        splitter.addWidget(self.scroll)
-        splitter.addWidget(self.table_scroll)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
-        self.layout.addWidget(splitter)
+        self.splitter = QSplitter(Qt.Vertical)
+        self.splitter.addWidget(self.scroll)
+        self.splitter.addWidget(self.table_scroll)
+        self.splitter.setStretchFactor(0, 2)
+        self.splitter.setStretchFactor(1, 1)
+        self.layout.addWidget(self.splitter)
 
         self.comps_exist = {
             'pri': 1,
@@ -560,15 +524,6 @@ class TabContent:
         }
         self.use_latex_checkbox = False
         self.sec_trs_checkbox = False
-
-    def _create_scroll(self, canvas):
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(False)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        scroll.setWidget(canvas)
-        scroll.setAlignment(Qt.AlignCenter)
-        return scroll
 
     def comps_dict_name(self):
         if self.sec_trs_checkbox:
@@ -585,8 +540,8 @@ class TabContent:
             'fig': fig,
             'table_fig': table_fig,
             'ax': ax,
-            'canvas': ScrollableCanvas(fig),
-            'table_canvas': ScrollableCanvas(table_fig),
+            'scroll': ScrollableFigure(fig),
+            'table_scroll': ScrollableFigure(table_fig),
             'latex text': latex_txt,
             'lvls': lvls,
             'arrows': arrows,
@@ -595,7 +550,6 @@ class TabContent:
             'zoom factor': [1., 1.],
             'coarse scale factor': 0.,
             'fine scale factor': 0.,
-            'origin size': fig.get_size_inches(),
         }
         self.comps_exist[dict_name] = 1
 
@@ -627,12 +581,22 @@ class TabContent:
 
     def set_canvas(self):
         name = self.comps_dict_name()
-        self.canvas = self.comps_dict[name]['canvas']
-        self.table_canvas = self.comps_dict[name]['table_canvas']
-        self.scroll.takeWidget()
-        self.table_scroll.takeWidget()
-        self.scroll.setWidget(self.canvas)
-        self.table_scroll.setWidget(self.table_canvas)
+        old_scroll, old_table = self.scroll, self.table_scroll
+        self.scroll = self.comps_dict[name]['scroll']
+        self.table_scroll = self.comps_dict[name]['table_scroll']
+        if self.scroll is not old_scroll:
+            self.splitter.replaceWidget(0, self.scroll)
+            old_scroll.hide()
+            self.scroll.show()
+        if self.table_scroll is not old_table:
+            self.splitter.replaceWidget(1, self.table_scroll)
+            old_table.hide()
+            self.table_scroll.show()
+
+    def figures(self):
+        for comps in self.comps_dict.values():
+            yield comps['fig']
+            yield comps['table_fig']
 
 
 class PlotWindow(QMainWindow):
@@ -654,24 +618,7 @@ class PlotWindow(QMainWindow):
         self.build_layout()
         self.build_new_tab(self.build_compatible_df(filtered_df), "Primary Transitions")
         self.show()
-        self.center_on_screen()
-
-    def center_on_screen(self):
-        screen = self.screen() or QGuiApplication.primaryScreen()
-        if not screen:
-            return
-
-        available_geo = screen.availableGeometry()
-        geo_x, geo_y = available_geo.x(), available_geo.y()
-        geo_w, geo_h = available_geo.width(), available_geo.height()
-
-        screen_w, screen_h = 1500, 1000
-        if geo_w < screen_w:
-            screen_w, screen_h = 1400, 900
-        self.resize(screen_w, screen_h)
-        x = geo_x + (geo_w - screen_w) // 2
-        y = geo_y + (geo_h - screen_h) // 2
-        self.move(x, y)
+        center_on_screen(self, (1500, 1000), fallback=(1400, 900))
 
     def build_layout(self):
         central_widget = QWidget()
@@ -895,12 +842,12 @@ class PlotWindow(QMainWindow):
         tab = self.tabs.widget(idx)
         self.tabs.removeTab(idx)
         tab.deleteLater()
+        for fig in self.tabs_content[idx].figures():
+            plt.close(fig)
         del self.tabs_content[idx]
 
     def center_scroll(self):
-        scroll = self.tabs_content[self.tabs.currentIndex()].scroll
-        hbar = scroll.horizontalScrollBar()
-        hbar.setValue(int((hbar.minimum() + hbar.maximum()) / 2))
+        self.tabs_content[self.tabs.currentIndex()].scroll.center()
 
     def refresh_tab(self):
         idx = self.tabs.currentIndex()
@@ -924,26 +871,13 @@ class PlotWindow(QMainWindow):
     def zoom(self, perc=100, direction='h', use_own_factor=False):
         idx = self.tabs.currentIndex()
         tab_content = self.tabs_content[idx]
-        comps = tab_content.get_comps()
-        fig = comps['fig']
-        canvas = comps['canvas']
-        orig_w, orig_h = comps['origin size']
         if not use_own_factor:
             tab_content.set_zoom(perc, direction)
-        # New sizes
         zoom = tab_content.get_comps()['zoom factor']
-        new_w_in = orig_w * zoom[0]
-        new_h_in = orig_h * zoom[1]
-        dpi = fig.get_dpi() / 2
-        new_w_px, new_h_px = int(new_w_in * dpi), int(new_h_in * dpi)
-        # Update sizes
-        fig.set_size_inches(new_w_in, new_h_in, forward=True)
-        canvas.setMinimumSize(new_w_px, new_h_px)
-        canvas.resize(new_w_px, new_h_px)
+        tab_content.scroll.set_zoom(zoom[0], zoom[1])
         self.center_scroll()
         self.hori_zoom_slider.set_value(round(zoom[0] * 100))
         self.vert_zoom_slider.set_value(round(zoom[1] * 100))
-        fig.canvas.draw_idle()
 
     def reset_sliders(self):
         self.hori_zoom_slider.set_value(100)
@@ -1385,16 +1319,14 @@ class DisplayDataApp(QMainWindow):
         Subset of `df` filtered by the selected frequency range.
     filtered_df : pd.DataFrame or None
         Subset of `ranged_df` further filtered by quantum-state selections.
-    selected_columns : list of str or None
-        Columns chosen for display in the table and export.
     filter_keys : list of str
         Quantum-number labels used to build filter controls.
-    filter_combos : dict of str → QComboBox
-        Mapping from filter identifiers (e.g. 'U-S J') to combo-box widgets.
+    filter_page : ParameterPage
+        Combo boxes for the quantum-state filters (paths like 'U-S J').
     freq_range : FrequencyRange
         Widget for specifying and converting the frequency range.
-    table_widget : QTableWidget
-        Widget used to display the tabular data.
+    table_view : DataFrameView
+        Table showing the filtered lines.
     labels : dict of str → QLabel
         Labels showing file information and row counts.
     """
@@ -1428,12 +1360,13 @@ class DisplayDataApp(QMainWindow):
 
         # Filters for molecular quantum states
         self.filter_keys = self.molecule_info.filters
-        self.filter_combos = {}
-        self.upper_state_box = self.create_filter_group_box('Upper State', 'U-S ')
-        self.lower_state_box = self.create_filter_group_box('Lower State', 'L-S ')
+        self.filter_page = self.create_filter_page()
 
         # Table for displaying results
-        self.table_view = QTableView()
+        self.settings = QSettings('linecat', 'linecat')
+        self.table_view = DataFrameView()
+        self.table_view.set_config(self.load_table_config())
+        self.table_view.configChanged.connect(lambda cfg: self.settings.setValue('table/config', json.dumps(cfg)))
 
         # Information labels
         self.labels = {
@@ -1463,8 +1396,7 @@ class DisplayDataApp(QMainWindow):
         top_left.addStretch()
 
         self.top_center.addWidget(self.labels["file name"], alignment=Qt.AlignHCenter)
-        self.top_center.addWidget(self.upper_state_box)
-        self.top_center.addWidget(self.lower_state_box)
+        self.top_center.addWidget(self.filter_page)
 
         top_right.addWidget(self.freq_range.groupbox)
 
@@ -1487,29 +1419,20 @@ class DisplayDataApp(QMainWindow):
         self.setCentralWidget(container)
 
         # DataFrame placeholders
+        self.load = False
         self.df = None
         self.ranged_df = None
         self.filtered_df = None
-        self.selected_columns = None
 
-        self.center_on_screen()
+        center_on_screen(self, (1400, 900), fallback=(1200, 700))
 
-    def center_on_screen(self):
-        screen = self.screen() or QGuiApplication.primaryScreen()
-        if not screen:
-            return
-
-        available_geo = screen.availableGeometry()
-        geo_x, geo_y = available_geo.x(), available_geo.y()
-        geo_w, geo_h = available_geo.width(), available_geo.height()
-
-        screen_w, screen_h = 1400, 900
-        if geo_w < screen_w:
-            screen_w, screen_h = 1200, 700
-        self.resize(screen_w, screen_h)
-        x = geo_x + (geo_w - screen_w) // 2
-        y = geo_y + (geo_h - screen_h) // 2
-        self.move(x, y)
+    def load_table_config(self):
+        """Table colors, visible columns and font saved by an earlier run (QSettings 'table/config')."""
+        try:
+            config = json.loads(self.settings.value('table/config', '{}', type=str))
+        except ValueError:
+            return {}
+        return config if isinstance(config, dict) else {}
 
     def check_molecule_info(self):
         species = self.df['Species'].iloc[0]
@@ -1519,68 +1442,48 @@ class DisplayDataApp(QMainWindow):
         self.molecule_info = REGISTRY[species]
         return True
 
-    def create_filter_group_box(self, name, prefix):
+    def create_filter_page(self):
         """
-        Build a QGroupBox containing filter combo boxes for each filter key.
-
-        Parameters
-        ----------
-        name : str
-            Title for the group box (e.g., 'Upper State').
-        prefix : str
-            Column-name prefix used for lookup in `filter_combos`
-            (e.g., 'U-S ' or 'L-S ').
+        Build a ParameterPage with one combo box per quantum number for each state.
 
         Returns
         -------
-        QGroupBox
-            A group box populated with one combo box per filter key,
-            arranged in a grid layout.
+        ParameterPage
+            Two groups ('Upper State', 'Lower State'); widget paths are the
+            column names, e.g. 'U-S J'.
         """
-        box = QGroupBox(name)
-        layout = QGridLayout(box)
-        layout.setContentsMargins(*GROUPBOX_MARGIN)  # (left, top, right, bottom)
-        for i, key in enumerate(self.filter_keys):
-            combo_layout, combo = create_combo(key, self.update_filters, width=70)
-            self.filter_combos[prefix + key] = combo
-            layout.addLayout(combo_layout, 0, i)
-        return box
+        def group(title, prefix):
+            return {"group": title, "row": [
+                {"type": "combo-box", "path": prefix + key, "label": filter_label(key), "items": ["All"]}
+                for key in self.filter_keys
+            ]}
+
+        page = ParameterPage({"column": [group("Upper State", "U-S "), group("Lower State", "L-S ")]})
+        page.valueChanged.connect(lambda _path, _value: self.update_filters())
+        return page
+
+    @property
+    def filter_combos(self):
+        """Mapping from filter identifiers (e.g. 'U-S J') to their ParameterComboBox."""
+        return {path: self.filter_page.get_widget(path) for path in self.filter_page.paths()}
 
     def set_filter_keys(self):
         """
-        Configure quantum‐state filter keys and rebuild the UI filter boxes.
+        Configure quantum-state filter keys and rebuild the filter page.
 
-        Updates `self.filter_keys` based on the selected molecule type, clears
-        any existing filter combo boxes, and then recreates the upper‐ and
-        lower‐state group boxes with the new set of QComboBoxes.
-
-        Parameters
-        ----------
-        molecule_type : str
-            Identifier for the molecule, either `'OH'` or `'CH3OH'`.
-            Determines which quantum numbers (e.g. J, Ω, Kₐ, K𝑐, Sym, vₜ)
-            are used as filter keys.
+        Updates `self.filter_keys` from the current molecule and replaces the
+        page of combo boxes with one built for the new set of quantum numbers.
 
         Returns
         -------
         None
         """
-
         self.filter_keys = self.molecule_info.filters
-
-        # Remove existing boxes
-        for box in (self.upper_state_box, self.lower_state_box):
-            box.setParent(None)
-            box.deleteLater()
-
-        self.filter_combos.clear()
-
-        # Recreate boxes
-        self.upper_state_box = self.create_filter_group_box('Upper State', 'U-S ')
-        self.lower_state_box = self.create_filter_group_box('Lower State', 'L-S ')
-
-        self.top_center.addWidget(self.upper_state_box)
-        self.top_center.addWidget(self.lower_state_box)
+        old = self.filter_page
+        self.filter_page = self.create_filter_page()
+        self.top_center.replaceWidget(old, self.filter_page)
+        old.setParent(None)
+        old.deleteLater()
 
     def update_range(self, range_vals):
         """
@@ -1623,11 +1526,12 @@ class DisplayDataApp(QMainWindow):
             return
 
         # Determine current selections
-        if getattr(self, 'load', False):
-            current = {k: 'All' for k in self.filter_combos}
+        combos = self.filter_combos
+        if self.load:
+            current = {k: 'All' for k in combos}
             self.load = False
         else:
-            current = {k: combo.currentText() for k, combo in self.filter_combos.items()}
+            current = {k: combo.get_value() for k, combo in combos.items()}
 
         # Apply filters
         self.filtered_df = self.ranged_df.copy()
@@ -1636,24 +1540,18 @@ class DisplayDataApp(QMainWindow):
                 self.filtered_df = self.filtered_df[self.filtered_df[key] == val]
         self.display_table()
 
-        # Update combo options
-        for combo in self.filter_combos.values():
-            combo.blockSignals(True)
-        for key, combo in self.filter_combos.items():
-            temp = self.ranged_df.copy()
+        # Update combo options (set_items is silent)
+        for key, combo in combos.items():
+            temp = self.ranged_df
             for col, val in current.items():
                 if col != key and val != 'All':
                     temp = temp[temp[col] == val]
             vals = temp[key].unique()
             try:
-                sorted_vals = sorted(vals, key=lambda x: float(x) if '/' not in str(x) else eval(x))
-            except Exception:
+                sorted_vals = sorted(vals, key=lambda x: float(Fraction(str(x))))
+            except (ValueError, ZeroDivisionError):
                 sorted_vals = sorted(vals, key=str)
-            combo.clear()
-            combo.addItems(['All'] + [str(v) for v in sorted_vals])
-            combo.setCurrentText(current.get(key, 'All'))
-        for combo in self.filter_combos.values():
-            combo.blockSignals(False)
+            combo.set_items(['All'] + [str(v) for v in sorted_vals], current=current.get(key, 'All'))
 
     def load_file(self):
         """
@@ -1686,7 +1584,6 @@ class DisplayDataApp(QMainWindow):
 
         self.df = df
         self.load = True
-        self.selected_columns = list(df.columns)
         if self.check_molecule_info():
             self.set_filter_keys()
             self.update_range([0, 'max'])
@@ -1697,59 +1594,31 @@ class DisplayDataApp(QMainWindow):
             show_warning("Failed", "Loaded file is empty, unknown or invalid.", parent=self)
 
     def open_select_columns_dialog(self):
-        """
-        Display a dialog allowing the user to select which columns to show.
-
-        Opens a scrollable QDialog containing a QCheckBox for each column in `self.df`.
-        After the user confirms, updates `self.selected_columns` and refreshes the table.
-
-        Returns
-        -------
-        None
-        """
+        """Open the table's column chooser (also in the header's right-click menu)."""
         if self.df is None:
             show_warning("Error", "Load a file first!", parent=self)
             return
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Select Columns to Display")
-        dlg_layout = QVBoxLayout(dialog)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        widget = QWidget()
-        form = QVBoxLayout(widget)
-        checks = {}
-        for col in self.df.columns:
-            cb = QCheckBox(col)
-            cb.setChecked(col in (self.selected_columns or []))
-            form.addWidget(cb)
-            checks[col] = cb
-        widget.setLayout(form)
-        scroll.setWidget(widget)
-        dlg_layout.addWidget(scroll)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        dlg_layout.addWidget(buttons)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        if dialog.exec():
-            self.selected_columns = [col for col, cb in checks.items() if cb.isChecked()]
-            self.display_table()
+        self.table_view.choose_columns()
 
     def display_table(self):
         if self.filtered_df is None:
             return
-        df = self.filtered_df[self.selected_columns] if self.selected_columns else self.filtered_df
-        self.model = DataFrameModel(df)  # keep a reference so it isn't GC'd
-        self.table_view.setModel(self.model)
-        self.table_view.resizeColumnsToContents()
+        df = self.filtered_df
+        self.table_view.set_frame(
+            df,
+            formats={col: fmt for col, fmt in TABLE_FORMATS.items() if col in df.columns},
+            backgrounds=table_background,
+            alignments=table_alignment,
+            headers={col: pretty_header(col) for col in df.columns},
+        )
         self.labels['N_rows'].setText(f"Displaying {len(df)} rows.")
 
     def export_to_csv(self):
         """
         Export the currently displayed data to a CSV file chosen by the user.
 
-        Opens a save-file dialog for CSV selection and writes the contents of
-        `self.filtered_df` (or the full dataset if no filters are active) with
-        only the columns in `self.selected_columns`.
+        Opens a save-file dialog for CSV selection and writes the table as
+        shown (filtered rows, visible columns, current sort order).
 
         Returns
         -------
@@ -1759,13 +1628,9 @@ class DisplayDataApp(QMainWindow):
             show_warning("Error", "No data to export!", parent=self)
             return
 
-        df = self.filtered_df if (self.filtered_df is not None and not self.filtered_df.empty) else self.df
-        if self.selected_columns:
-            df = df[self.selected_columns]
-
         path, _ = QFileDialog.getSaveFileName(self, "Save CSV File", "", "CSV Files (*.csv)")
         if path:
-            df.to_csv(path, index=False)
+            self.table_view.export_csv(path)
             show_information("Success", "Data exported successfully!", parent=self)
 
     def show_button(self):
@@ -1876,22 +1741,20 @@ def create_button(name, callback_func, enable=True):
     return button
 
 
-def create_combo(name, callback_func=None, items=None, item='', math=True, width=None):
+def create_combo(name, callback_func=None, items=None, item='', width=None):
     """
     Create a labeled QComboBox.
 
     Parameters
     ----------
     name : str
-        Label text; rendered as math (``MathLabel``) when ``math`` is True.
+        Label text.
     callback_func : callable or None, optional
         Function to connect to the combo's ``currentIndexChanged`` signal.
     items : list of str or None, optional
         Items to populate the combo box.
     item : str, optional
         Initial selected item (must match one of ``items``).
-    math : bool, optional
-        If True, render the label with ``MathLabel``; else a plain ``QLabel``.
     width : int or None, optional
         Fixed pixel width for the combo box.
 
@@ -1904,12 +1767,8 @@ def create_combo(name, callback_func=None, items=None, item='', math=True, width
     """
     layout = QHBoxLayout()
     layout.setSpacing(1)
-    if math:
-        expr = '\\Omega' if name == 'Omega' else name
-        label = MathLabel(expr, font_size=20, fix_size=True)
-    else:
-        label = create_label(name, alignment='Right')
-        label.setStyleSheet('padding: 0px;')
+    label = create_label(name, alignment='Right')
+    label.setStyleSheet('padding: 0px;')
     layout.addWidget(label)
 
     combo = QComboBox()
@@ -1963,31 +1822,52 @@ def assign_lvls_y_positions(df, real_size_factor=0.):
 
 
 # =============================================================================
-# Pretty headers
+# Pretty headers (HTML, rendered by DataFrameView)
 # =============================================================================
 # Non-prefixed headers → pretty text
 BASE_PRETTY_MAP: dict[str, str] = {
-    "Frequency (MHz)": "Frequency\n(MHz)",
-    "Error (MHz)": "Error\n(MHz)",
-    "Wavelength (m)": "Wavelength\n(m)",
-    "Log Intensity (nm^2 MHz)": "Log Intensity\n(nm^2 MHz)",
+    "Frequency (MHz)": "Frequency<br>(MHz)",
+    "Error (MHz)": "Error<br>(MHz)",
+    "Wavelength (cm)": "Wavelength<br>(cm)",
+    "Log Intensity (nm^2 MHz)": "Log Intensity<br>(nm<sup>2</sup> MHz)",
     "Degrees of Freedom (DR)": "DoF",
-    "Species ID (TAG)": "Species\n(TAG)",
-    "A_ij (s^-1)": "A_ij\n(s^-1)",
-    "tau (s)": "tau\n(s)",
-    "S_ij mu^2 (D^2)": "S_ij mu^2\n(D^2)",
-    "d_ij (D)": "d_ij\n(D)",
+    "Species ID (TAG)": "Species<br>(TAG)",
+    "log_10 A_ij": "log<sub>10</sub> A<sub>ij</sub>",
+    "A_ij (s^-1)": "A<sub>ij</sub><br>(s<sup>-1</sup>)",
+    "tau (s)": "&tau;<br>(s)",
+    "S_ij mu^2 (D^2)": "S<sub>ij</sub>&mu;<sup>2</sup><br>(D<sup>2</sup>)",
+    "d_ij (D)": "d<sub>ij</sub><br>(D)",
+    "g_up": "g<sub>up</sub>",
     "Species": "Species",
 }
 
 # Tail renames for state-prefixed columns (applies to both U-S and L-S)
 STATE_TAIL_RENAMES: dict[str, str] = {
-    "E (cm^-1)": "Energy (cm^-1)",
+    "E (cm^-1)": "Energy (cm<sup>-1</sup>)",
     "E (K)": "Energy (K)",
-    # Everything else (J, Omega, F, K_a, K_c, Sym, v_t, …) left as-is
+    "K_a": "K<sub>a</sub>",
+    "K_c": "K<sub>c</sub>",
+    "v_t": "v<sub>t</sub>",
+    "Omega": "&Omega;",
+    "J+0.5": "J+&frac12;",
 }
 
 STATE_PREFIXES: tuple[str, ...] = ("U-S", "L-S")
+
+# Quantum-number labels in the filter boxes (math text for MathLabel)
+FILTER_LABELS: dict[str, str] = {
+    "Omega": r"\Omega",
+    "K_a": "K_a",
+    "K_c": "K_c",
+    "v_t": "v_t",
+    "Sym": r"\mathrm{Sym}",
+    "Parity": r"\mathrm{Parity}",
+}
+
+
+def filter_label(key: str) -> str:
+    """Math label of a quantum number in the filter boxes."""
+    return FILTER_LABELS.get(key, key)
 
 
 def pretty_header(h: str) -> str:
@@ -1995,18 +1875,13 @@ def pretty_header(h: str) -> str:
     if h in BASE_PRETTY_MAP:
         return BASE_PRETTY_MAP[h]
 
-    # 2) Generic state-prefixed mapping: "<prefix> <tail>" → "<prefix>\n<pretty tail>"
+    # 2) Generic state-prefixed mapping: "<prefix> <tail>" → "<prefix><br><pretty tail>"
     for pref in STATE_PREFIXES:
         pref_with_space = f"{pref} "
         if h.startswith(pref_with_space):
             tail = h[len(pref_with_space):]
             tail_pretty = STATE_TAIL_RENAMES.get(tail, tail)
-            return f"{pref}\n{tail_pretty}"
+            return f"{pref}<br>{tail_pretty}"
 
     # 3) Fallback: unchanged
     return h
-
-
-def convert_header(headers: Iterable[str]) -> List[str]:
-    """Reformat headers for plotting (newline-separated units, auto U-S/L-S)."""
-    return [pretty_header(h) for h in headers]
