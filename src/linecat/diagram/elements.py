@@ -6,7 +6,7 @@ import matplotlib as mpl
 import numpy as np
 import pandas as pd
 from matplotlib.patches import FancyArrowPatch
-from matplotlib.transforms import blended_transform_factory
+from matplotlib.transforms import blended_transform_factory, offset_copy
 
 H_STEPS = {
     'h-large': 2,
@@ -33,6 +33,36 @@ def tex_fontsize_factor():
     if mpl.rcParams['text.usetex']:
         return 1.2
     return 1.
+
+
+# gap between a level line and its labels, and the free space kept at the figure's edges (points)
+LABEL_GAP_PT = 8
+EDGE_PAD_PT = 6
+
+
+def fit_side_margins(fig, level_lines):
+    """Set the figure's left and right margins so the level labels and energies fit with a small gap.
+
+    Measured at the figure's current size, with room for a selected label (2 pt larger, boxed); call it again
+    whenever the figure is resized (zoom).
+    """
+    if not level_lines:
+        return
+    renderer = fig.canvas.get_renderer()
+    width = fig.bbox.width
+    px = fig.dpi / 72.0
+    left = right = 0.0
+    for line in level_lines:
+        grow = (line.font_size + 2) / line.font_size
+        box = (0.3 * (line.font_size + 2) + 2) * px  # bbox pad and edge of a selected label
+        left = max(left, line.lvl.get_window_extent(renderer).width * grow + box)
+        right = max(right, line.energy.get_window_extent(renderer).width * grow + box)
+    gap = (LABEL_GAP_PT + EDGE_PAD_PT) * px
+    lo = min(max((left + gap) / width, 0.02), 0.45)
+    hi = max(min(1 - (right + gap) / width, 0.98), 0.55)
+    params = fig.subplotpars
+    if abs(params.left - lo) > 1e-4 or abs(params.right - hi) > 1e-4:
+        fig.subplots_adjust(left=lo, right=hi)
 
 
 def eval_lvls_energy_diff(E_column):
@@ -63,14 +93,15 @@ class LevelLine:
         self.header = header
         self.font_size = self.set_font_size()
         transform = blended_transform_factory(ax.transAxes, ax.transData)
-        self.lvl = ax.text(-0.02, y, lvl_label,
+        # labels a fixed distance in points from the line ends, so the margins can be fitted to them
+        self.lvl = ax.text(0, y, lvl_label,
                            ha="right", va="center",
                            fontsize=self.font_size, color='k',
-                           transform=transform)
-        self.energy = ax.text(1.02, y, e_label,
+                           transform=offset_copy(transform, fig=ax.figure, x=-LABEL_GAP_PT, units='points'))
+        self.energy = ax.text(1, y, e_label,
                               ha="left", va="center",
                               fontsize=self.font_size, color='k',
-                              transform=transform)
+                              transform=offset_copy(transform, fig=ax.figure, x=LABEL_GAP_PT, units='points'))
         if header:
             ax.text(0.5, y, molecule_name,
                     ha="center", va="center",

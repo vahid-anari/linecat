@@ -1,13 +1,92 @@
-"""Frequency-range selector with unit conversion."""
+"""The two filters of the main window: quantum numbers (grid of combo boxes) and frequency range."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QHBoxLayout, QVBoxLayout
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont, QFontMetrics
+from PySide6.QtWidgets import QComboBox, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout
 
+from sciwidgets.labels import MathLabel
 from sciwidgets.params import NumericLineEdit
 
+from linecat.headers import filter_label
 from linecat.widgets import GROUPBOX_MARGIN, create_button, create_combo, create_label
+
+STATES = (("Upper", "U-S "), ("Lower", "L-S "))
+
+
+class FilterCombo(QComboBox):
+    """Combo box of one quantum number; 'All' means no filter.
+
+    Same small API as sciwidgets' ParameterComboBox: ``get_value``,
+    ``set_value``, ``items``, ``set_items`` (setters silent) and
+    ``valueChanged`` for user choices only.
+    """
+
+    valueChanged = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.addItem("All")
+        self.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.setMinimumWidth(70)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.activated.connect(lambda _index: self.valueChanged.emit(self.currentText()))
+
+    def get_value(self) -> str:
+        return self.currentText()
+
+    def set_value(self, value: str) -> None:
+        index = self.findText(value)
+        if index < 0:
+            raise ValueError(f"No combo item found for text={value!r}")
+        self.setCurrentIndex(index)
+
+    def items(self) -> list[str]:
+        return [self.itemText(i) for i in range(self.count())]
+
+    def set_items(self, items, current=None) -> None:
+        items = list(items)
+        old = self.currentText()
+        self.blockSignals(True)
+        try:
+            self.clear()
+            self.addItems(items)
+            for wanted in (old, current):
+                if wanted is not None and wanted in items:
+                    self.setCurrentIndex(items.index(wanted))
+                    break
+            else:
+                self.setCurrentIndex(0)
+        finally:
+            self.blockSignals(False)
+
+
+class QuantumFilters(QGroupBox):
+    """Grid of quantum-number filters: one column per quantum number, rows Upper and Lower.
+
+    ``combos`` maps column names ('U-S J', 'L-S J', …) to their FilterCombo;
+    ``changed`` is emitted when the user picks a value.
+    """
+
+    changed = Signal()
+
+    def __init__(self, keys, parent=None):
+        super().__init__("Quantum Numbers", parent)
+        self.combos: dict[str, FilterCombo] = {}
+        grid = QGridLayout(self)
+        grid.setContentsMargins(*GROUPBOX_MARGIN)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(6)
+        for col, key in enumerate(keys, start=1):
+            grid.addWidget(MathLabel(filter_label(key), font_size=18, fix_size=True), 0, col, Qt.AlignCenter)
+        for row, (title, prefix) in enumerate(STATES, start=1):
+            grid.addWidget(QLabel(title), row, 0, Qt.AlignRight | Qt.AlignVCenter)
+            for col, key in enumerate(keys, start=1):
+                combo = FilterCombo(self)
+                combo.valueChanged.connect(lambda _value: self.changed.emit())
+                grid.addWidget(combo, row, col, Qt.AlignCenter)
+                self.combos[prefix + key] = combo
 
 
 class FrequencyRange:
@@ -20,7 +99,8 @@ class FrequencyRange:
     Parameters
     ----------
     callback_func : callable
-        Function to invoke with the updated frequency range [min_MHz, max_MHz].
+        Function to invoke with the updated frequency range [min_MHz, max_MHz],
+        or None when the range filter is switched off.
 
     Attributes
     ----------
@@ -49,7 +129,8 @@ class FrequencyRange:
         Parameters
         ----------
         callback_func : callable
-            Function to invoke with the updated frequency range [min_MHz, max_MHz].
+            Function to invoke with the updated frequency range [min_MHz, max_MHz],
+        or None when the range filter is switched off.
 
         Returns
         -------
@@ -75,6 +156,13 @@ class FrequencyRange:
         self.apply_button = create_button('Apply', self.update_range)
 
         self.groupbox = QGroupBox('Frequency Range')
+        self.groupbox.setCheckable(True)
+        self.groupbox.setChecked(True)
+        self.groupbox.setToolTip("Untick to show all frequencies; the range is kept for when you tick it again")
+        self.groupbox.toggled.connect(self._on_toggled)
+        # room for the checkbox and the title in the app's group-box font (Times New Roman 16 pt bold)
+        title_font = QFont("Times New Roman", 16, QFont.Bold)
+        self.groupbox.setMinimumWidth(QFontMetrics(title_font).horizontalAdvance('Frequency Range') + 70)
         self.layout = QVBoxLayout(self.groupbox)
         self.layout.setContentsMargins(*GROUPBOX_MARGIN)
         self.layout.addStretch()
@@ -199,10 +287,20 @@ class FrequencyRange:
             self.from_value.set_value(mx)
             self.to_value.set_value(mn)
 
+    def is_enabled(self):
+        """Whether the range filter is on (the group box is ticked)."""
+        return self.groupbox.isChecked()
+
+    def _on_toggled(self, checked):
+        self.callback_func(self.range_value if checked else None)
+
     def reset(self):
-        """Back to the full range (0 to 1e10 MHz) in MHz, without calling back."""
+        """Back to the full range (0 to 1e10 MHz) in MHz and switched on, without calling back."""
         self.unit = 'MHz'
         self.unit_combo.setCurrentText(self.unit)
+        self.groupbox.blockSignals(True)
+        self.groupbox.setChecked(True)
+        self.groupbox.blockSignals(False)
         self.set_range(0.0, 1e10)
 
     def set_range(self, min_mhz, max_mhz):

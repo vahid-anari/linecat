@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import shutil
+from contextlib import contextmanager
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QSizePolicy
+from PySide6.QtCore import QEventLoop, Qt
+from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLabel, QPushButton, QSizePolicy
 
 from sciwidgets.params import FloatSlider, IntSlider, SliderFeature
 
@@ -42,13 +43,44 @@ def latex_available() -> bool:
     return shutil.which("latex") is not None
 
 
+
+@contextmanager
+def busy(status=None, message=None):
+    """Wait cursor (and a busy status-bar message) while a slow step runs on the GUI thread."""
+    QApplication.setOverrideCursor(Qt.WaitCursor)
+    if status is not None and message:
+        status.set_state(message, busy=True)
+    QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)  # show cursor and message now
+    try:
+        yield
+    finally:
+        QApplication.restoreOverrideCursor()
+
 def make_slider(label, min_val, max_val, init_val, val_fmt=None):
-    """Percent slider without range labels or context menu (zoom and scale controls)."""
+    """Percent slider without range labels or context menu (zoom and scale controls); upright name."""
+    name = rf"\mathrm{{{label}}}"
     if isinstance(min_val, float):
-        return FloatSlider(label, min_val, max_val, unit=r"\%", init_val=init_val, val_fmt=val_fmt or "{:.2f}",
+        return FloatSlider(name, min_val, max_val, unit=r"\%", init_val=init_val, val_fmt=val_fmt or "{:.2f}",
                            show_range=False, features=SliderFeature.NONE)
-    return IntSlider(label, min_val, max_val, unit=r"\%", init_val=init_val, show_range=False,
+    return IntSlider(name, min_val, max_val, unit=r"\%", init_val=init_val, show_range=False,
                      features=SliderFeature.NONE)
+
+
+def align_widgets(widgets):
+    """Give sciwidgets parameter widgets a common name width and value width, kept up to date."""
+    widgets = list(widgets)
+
+    def realign(*_args):
+        names = max(w.get_name_width() for w in widgets)
+        values = max(w.get_value_width() for w in widgets)
+        for w in widgets:
+            w.set_name_width(names)
+            w.set_value_width(values)
+
+    for w in widgets:
+        w.nameWidthChanged.connect(realign)
+        w.valueWidthChanged.connect(realign)
+    realign()
 
 
 def create_label(text, alignment='Center', h_size_policy=QSizePolicy.Fixed, v_size_policy=QSizePolicy.Fixed):

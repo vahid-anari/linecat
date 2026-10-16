@@ -10,6 +10,7 @@ TABLE_BACKGROUNDS = {'U-': 'tan', 'L-': 'lightskyblue'}
 TABLE_FORMATS = {
     'Frequency (MHz)': lambda v: f"{float(v):,.3f}",
     'Error (MHz)': lambda v: f"{float(v):.4f}",
+    'Wavelength (cm)': lambda v: pretty_sci_text(float(v), 4),
     'tau (s)': lambda v: pretty_sci_text(float(v), 4),
     'A_ij (s^-1)': lambda v: pretty_sci_text(float(v), 4),
     'U-S E (cm^-1)': lambda v: f"{float(v):,.5f}",

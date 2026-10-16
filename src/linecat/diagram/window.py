@@ -8,25 +8,31 @@ from pathlib import Path
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib import colors as mcolors
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.transforms import offset_copy
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QGroupBox, QHBoxLayout, QMainWindow, QPushButton, QTabWidget, QTextEdit, QVBoxLayout,
-    QWidget,
+    QCheckBox, QDialog, QFileDialog, QGroupBox, QHBoxLayout, QMainWindow, QPushButton, QTabWidget, QTextEdit,
+    QVBoxLayout, QWidget,
 )
 
 from sciwidgets.dialogs import show_information, show_warning
 from sciwidgets.window import MenuBarController, center_on_screen
 
 from linecat.diagram.elements import (
-    BBOX_STYLES, H_STEPS, LevelLine, TransitionArrow, assign_lvls_y_positions, tex_fontsize_factor,
+    BBOX_STYLES, H_STEPS, LevelLine, TransitionArrow, assign_lvls_y_positions, fit_side_margins, tex_fontsize_factor,
 )
+from linecat.diagram.latex_cache import prerender_latex
 from linecat.diagram.tab import DiagramTab
+from linecat.diagram.table import (
+    TransitionSelection, add_row, finish_frame, new_table_frame, transition_table_figure,
+)
 from linecat.molecules import MoleculeInfo
-from linecat.widgets import GROUPBOX_MARGIN, NATIVE_MENU_BAR, make_slider
+from linecat.widgets import GROUPBOX_MARGIN, NATIVE_MENU_BAR, align_widgets, busy, make_slider
+
+
+HOVER_FONT_SIZE = 16
 
 
 class DiagramWindow(QMainWindow):
@@ -60,6 +66,8 @@ class DiagramWindow(QMainWindow):
                 {"id": "latex_commands", "text": "LaTeX Commands…"},
             ],
             "View": [
+                {"id": "fit", "text": "Fit to Window", "checkable": True, "shortcut": "Ctrl+0"},
+                {"id": "sep"},
                 {"id": "secondary", "text": "Secondary Transitions", "checkable": True},
                 {"id": "use_latex", "text": "Use LaTeX for Rendering", "checkable": True,
                  "enabled": self.latex_available},
@@ -71,6 +79,8 @@ class DiagramWindow(QMainWindow):
         top_layout.addWidget(self.make_zoom_group_box())
         top_layout.addSpacing(10)
         top_layout.addWidget(self.make_real_scale_group_box())
+        align_widgets([self.hori_zoom_slider, self.vert_zoom_slider, self.coarse_scale_slider,
+                       self.fine_scale_slider])
         top_layout.addStretch()
         layout.addLayout(top_layout, 0)
         layout.addWidget(self.tabs, 1)
@@ -82,12 +92,16 @@ class DiagramWindow(QMainWindow):
         self.hori_zoom_slider.valueChanged.connect(lambda x: self.zoom(x, direction='h'))
         self.vert_zoom_slider = make_slider('Vertical', 10, 600, 100)
         self.vert_zoom_slider.valueChanged.connect(lambda x: self.zoom(x, direction='v'))
+        self.fit_checkbox = QCheckBox("Fit to window")
+        self.fit_checkbox.setToolTip("Zoom the diagram to the space beside the table, also when the window is resized")
+        self.fit_checkbox.toggled.connect(self.set_fit)
         # Group Box
         group_box = QGroupBox("Zoom")
         group_layout = QVBoxLayout()
         group_layout.setContentsMargins(*GROUPBOX_MARGIN)
         group_layout.addWidget(self.hori_zoom_slider)
         group_layout.addWidget(self.vert_zoom_slider)
+        group_layout.addWidget(self.fit_checkbox, alignment=Qt.AlignHCenter)
         group_box.setLayout(group_layout)
         return group_box
 
@@ -111,6 +125,7 @@ class DiagramWindow(QMainWindow):
     def export_pdf(self):
         save_dir = self.settings.value('paths/pdf_dir', '', type=str)
         path, _ = QFileDialog.getSaveFileName(self, "Save PDF File", save_dir, "PDF Files (*.pdf)")
+        self.reactivate()
         if not path:
             return
         if not path.lower().endswith(".pdf"):
@@ -121,11 +136,16 @@ class DiagramWindow(QMainWindow):
         idx = self.tabs.currentIndex()
         tab_content = self.tabs_content[idx]
         comps = tab_content.get_comps()
-        fig = comps['fig']
-        table_fig = comps['table_fig']
-        with PdfPages(path) as pdf:
-            pdf.savefig(fig)
-            pdf.savefig(table_fig)
+        with mpl.rc_context({"text.usetex": tab_content.use_latex_checkbox}):
+            table_fig = transition_table_figure(comps['table df'])
+        if tab_content.use_latex_checkbox:
+            prerender_latex(self, [table_fig])
+        try:
+            with PdfPages(path) as pdf:
+                pdf.savefig(comps['fig'])
+                pdf.savefig(table_fig)
+        finally:
+            plt.close(table_fig)
 
     def change_y_positions(self, event):
         coarse_scale_factor = self.coarse_scale_slider.get_value() / 100.
@@ -156,6 +176,8 @@ class DiagramWindow(QMainWindow):
             self.export_pdf()
         elif action_id == 'latex_commands':
             self.latex_format()
+        elif action_id == 'fit':
+            self.fit_checkbox.setChecked(checked)
         elif action_id in ('secondary', 'use_latex'):
             self.on_view_toggled(action_id, checked)
 
@@ -193,11 +215,13 @@ class DiagramWindow(QMainWindow):
 
     def sec_trs_checkbox_failed(self, tab_content):
         show_warning("No Secondary Transition", "No secondary transitions found.", parent=self)
+        self.reactivate()
         self.menu.set_checked('secondary', False)
         tab_content.sec_trs_checkbox = False
 
     def use_latex_checkbox_failed(self, tab_content):
         show_warning("LaTeX not available", "LaTeX was not found on this computer.", parent=self)
+        self.reactivate()
         self.menu.set_checked('use_latex', False)
         tab_content.use_latex_checkbox = False
 
@@ -239,11 +263,18 @@ class DiagramWindow(QMainWindow):
         close_btn.clicked.connect(dlg.reject)
 
         dlg.exec()
+        self.reactivate()
+
+    def reactivate(self):
+        """Bring this window back to the front: on macOS a closed dialog hands focus to the main window."""
+        self.raise_()
+        self.activateWindow()
 
     def close_tab(self, idx):
         tab_title = self.tabs.tabText(idx)
         if tab_title == "Primary Transitions":
             show_information("Not Allowed", "You cannot close the Primary Transitions tab.", parent=self)
+            self.reactivate()
             return
         tab = self.tabs.widget(idx)
         self.tabs.removeTab(idx)
@@ -275,6 +306,8 @@ class DiagramWindow(QMainWindow):
         self.menu.set_checked('use_latex', use_latex_checkbox)
         self.hori_zoom_slider.set_value(round(zoom[0] * 100))
         self.vert_zoom_slider.set_value(round(zoom[1] * 100))
+        self.show_fit_state(tab_content.fit)
+        tab_content.apply_fit()
         self.coarse_scale_slider.set_value(round(coarse_scale_factor * 100.))
         self.fine_scale_slider.set_value(fine_scale_factor * 100.)
         self.center_scroll()
@@ -290,6 +323,31 @@ class DiagramWindow(QMainWindow):
         self.center_scroll()
         self.hori_zoom_slider.set_value(round(zoom[0] * 100))
         self.vert_zoom_slider.set_value(round(zoom[1] * 100))
+
+    def set_fit(self, checked):
+        """Fit to Window on or off for the current tab (checkbox or View menu)."""
+        if not self.tabs_content:
+            return
+        tab_content = self.tabs_content[self.tabs.currentIndex()]
+        tab_content.fit = checked
+        self.show_fit_state(checked)
+        tab_content.apply_fit()
+
+    def show_fit_state(self, fit):
+        """Checkbox and menu item show the tab's Fit state; the zoom sliders are off while it fits."""
+        self.fit_checkbox.blockSignals(True)
+        self.fit_checkbox.setChecked(fit)
+        self.fit_checkbox.blockSignals(False)
+        self.menu.set_checked('fit', fit)
+        self.hori_zoom_slider.setEnabled(not fit)
+        self.vert_zoom_slider.setEnabled(not fit)
+
+    def on_tab_fitted(self, tab_content, h, v):
+        """Show the zoom a fitting tab chose, if it is the tab on show."""
+        if self.tabs_content and self.tabs_content[self.tabs.currentIndex()] is tab_content:
+            self.hori_zoom_slider.set_value(round(h * 100))
+            self.vert_zoom_slider.set_value(round(v * 100))
+            self.center_scroll()
 
     def reset_sliders(self):
         self.hori_zoom_slider.set_value(100)
@@ -350,8 +408,8 @@ class DiagramWindow(QMainWindow):
 
     def build_pri_comps(self, trs_df):
         lvls_df = self.get_unique_levels(trs_df)
-        fig, ax, latex_txt, lines, arrows, table_fig = self.build_trs_fig(lvls_df, trs_df)
-        return DiagramTab(fig, ax, latex_txt, lines, arrows, lvls_df, trs_df, table_fig)
+        fig, ax, latex_txt, lines, arrows, table_df, selection = self.build_trs_fig(lvls_df, trs_df)
+        return DiagramTab(fig, ax, latex_txt, lines, arrows, lvls_df, trs_df, table_df, selection)
 
     def build_sec_comps(self, tab_content, use):
         exist_another = tab_content.comps_exist[use]
@@ -376,9 +434,10 @@ class DiagramWindow(QMainWindow):
                 all_lvls = pd.concat([pri_lvls_df, sec_lvls_df], ignore_index=True).drop_duplicates(subset='level')
                 all_lvls = all_lvls.sort_values(['E', 'up'], ascending=True).reset_index(drop=True)
         use_latex = tab_content.use_latex_checkbox
-        fig, ax, latex_txt, lines, arrows, table_fig = self.build_trs_fig(all_lvls, pri_trs_df, sec_trs_df, use_latex)
+        fig, ax, latex_txt, lines, arrows, table_df, selection = self.build_trs_fig(all_lvls, pri_trs_df, sec_trs_df,
+                                                                                     use_latex)
         self.reset_sliders()
-        tab_content.add_comps(fig, ax, latex_txt, lines, arrows, all_lvls, sec_trs_df, table_fig)
+        tab_content.add_comps(fig, ax, latex_txt, lines, arrows, all_lvls, sec_trs_df, table_df, selection)
         tab_content.set_canvas()
         self.refresh_tab()
         return True
@@ -388,9 +447,10 @@ class DiagramWindow(QMainWindow):
         self.vert_zoom_slider.set_value(100)
         pri_trs_df = tab_content.comps_dict['pri']['trs df']
         pri_lvls_df = tab_content.comps_dict['pri']['lvls df']
-        fig, ax, latex_txt, lines, arrows, table_fig = self.build_trs_fig(pri_lvls_df, pri_trs_df, use_latex=True)
+        fig, ax, latex_txt, lines, arrows, table_df, selection = self.build_trs_fig(pri_lvls_df, pri_trs_df,
+                                                                                     use_latex=True)
         self.reset_sliders()
-        tab_content.add_comps(fig, ax, latex_txt, lines, arrows, pri_lvls_df, pri_trs_df, table_fig)
+        tab_content.add_comps(fig, ax, latex_txt, lines, arrows, pri_lvls_df, pri_trs_df, table_df, selection)
         tab_content.set_canvas()
         self.refresh_tab()
 
@@ -400,6 +460,7 @@ class DiagramWindow(QMainWindow):
         else:
             self.reset_sliders()
             tab_content = self.build_pri_comps(trs_df)
+            tab_content.on_fitted = self.on_tab_fitted  # the tab refits whenever its diagram area is resized
             self.tabs_content.append(tab_content)
             idx = self.tabs.addTab(tab_content.widget, title)
             self.tabs.setCurrentIndex(idx)
@@ -408,8 +469,17 @@ class DiagramWindow(QMainWindow):
         """Build the diagram and table figures; LaTeX rendering is switched on only while building."""
         if sec_trs_df is None:
             sec_trs_df = pd.DataFrame()
-        with mpl.rc_context({"text.usetex": use_latex}):
-            return self._build_trs_fig(lvls_df, pri_trs_df, sec_trs_df, use_latex)
+        with busy():
+            with mpl.rc_context({"text.usetex": use_latex}):
+                result = self._build_trs_fig(lvls_df, pri_trs_df, sec_trs_df, use_latex)
+                hover_size = HOVER_FONT_SIZE * tex_fontsize_factor()
+            fig, arrows = result[0], result[4]
+            if use_latex:
+                # run LaTeX for every label (and the hover texts) in the background before the first draw
+                prerender_latex(self, [fig], extra=[(arrow.label, hover_size) for arrow in arrows])
+            fit_side_margins(fig, fig.level_lines)
+        fig.canvas.mpl_connect('resize_event', lambda _event, fig=fig: fit_side_margins(fig, fig.level_lines))
+        return result
 
     def _build_trs_fig(self, lvls_df, pri_trs_df, sec_trs_df, use_latex):
         tr_arrows = []
@@ -444,71 +514,6 @@ class DiagramWindow(QMainWindow):
             fig.subplots_adjust(top=0.97, bottom=0.02, left=0.2, right=0.8, hspace=0.0)
             fig.set_facecolor('white')
             return fig, axes
-
-        def make_table_fig(n_rows):
-            m = n_rows + 2.0
-            margin = 1. / m
-            h = m / 3.
-            fig, ax = plt.subplots(figsize=(10, h), dpi=100)
-            fig.subplots_adjust(left=0.05, right=0.95, top=1 - margin, bottom=margin)
-            ax.axis("off")
-            return fig, ax
-
-        def make_table(ax, df):
-            df['nu'] = df['nu'].map(lambda x: f"{x:,.4f}")
-            df['tau'] = df['tau'].map(lambda x: scientific_display(x, 3))
-            for col in ['Number', 'nu', 'd_ij']:
-                df[col] = df[col].map(lambda x: f"${x}$")
-            df = df[['Number', 'Type', 'nu', 'tau', 'd_ij']]
-            table = ax.table(
-                cellText=df.values,
-                colLabels=[r'$\mathbf{Number}$', r'$\mathbf{Type}$', r'$\mathbf{\nu \, (MHz)}$',
-                           r'$\mathbf{\tau \, (s)}$', r'$\mathbf{d_{ij} \, (D)}$'],
-                loc="center",
-                cellLoc="center",
-                bbox=[0, 0, 1, 1],
-            )
-
-            table.auto_set_font_size(False)
-            table.set_fontsize(12 * tex_fontsize_factor())
-            n_cols = len(df.columns)
-            for col in range(n_cols):
-                cell = table[(0, col)]
-                cell.set_text_props(fontsize=14 * tex_fontsize_factor(), fontweight='bold')
-            table.auto_set_column_width(col=list(range(len(df.columns))))
-            return table
-
-        def align_column(table, col_idx, alignment):
-            cells = table.get_celld()
-            n_rows = max(r for (r, c) in cells.keys())
-            for r in range(1, n_rows + 1):
-                cell = table[r, col_idx]
-                text = cell.get_text()
-                if alignment == 'left':
-                    text.set_ha("left")
-                    text.set_x(0.05)
-                elif alignment == 'right':
-                    text.set_ha("right")
-                    text.set_x(0.95)
-
-        def set_row_face_color(table, row_idx, color):
-            cells = table.get_celld()
-            n_cols = max(c for (r, c) in cells.keys()) + 1
-            for c in range(n_cols):
-                cell = table[row_idx, c]
-                cell.set_facecolor(mcolors.to_rgba(color, alpha=0.3))
-
-        def change_row_color(arrow, selected=False):
-            type_ = arrow.type
-            number = arrow.number
-            color = arrow.color[1] if selected else arrow.color[0]
-            row_idx = table_df.index[(table_df['type_'] == type_) & (table_df['Number'] == number)][0]
-            set_row_face_color(transition_table, row_idx + 1, color)
-
-        def scientific_display(value, float_point):
-            value = f"{value:.{float_point}e}"
-            m, e = value.split('e')
-            return fr"${m}\times 10^{{{int(e)}}}$"
 
         def check_sec_trs(lvl):
             if sec_trs_df.empty:
@@ -577,23 +582,24 @@ class DiagramWindow(QMainWindow):
                     + sec_trs_txt
                     )
 
+        highlighted = []
+
         def look_for_arrow(y):
             for arrow in tr_arrows:
                 if arrow.y_up == y or arrow.y_down == y:
                     arrow.selected(True)
-                    change_row_color(arrow, True)
+                    highlighted.append((arrow.type, arrow.number))
                 else:
                     arrow.selected(False)
-                    change_row_color(arrow, False)
 
         def on_move(event):
             # Reset all visuals
             nu_tau_label.set_visible(False)
+            highlighted.clear()
             for lvl in lvls:
                 lvl.selected(False)
             for arrow in tr_arrows:
                 arrow.selected(False)
-                change_row_color(arrow, False)
 
             if event.inaxes == ax_line:
                 x, y = event.xdata, event.ydata
@@ -603,7 +609,7 @@ class DiagramWindow(QMainWindow):
                         nu_tau_label.set_position((x, y))
                         nu_tau_label.set_visible(True)
                         arrow.selected(True)
-                        change_row_color(arrow, True)
+                        highlighted.append((arrow.type, arrow.number))
                         idx_up, idx_down = arrow.lvl_idx
                         lvls[idx_up].selected(True, trs=arrow.type)
                         lvls[idx_down].selected(True, trs=arrow.type)
@@ -633,7 +639,7 @@ class DiagramWindow(QMainWindow):
                         break
 
             fig.canvas.draw_idle()
-            table_fig.canvas.draw_idle()
+            selection.hovered.emit(list(highlighted))
 
         def on_press(event):
             if event.inaxes == ax_line and event.button == 1 and event.dblclick:
@@ -648,8 +654,9 @@ class DiagramWindow(QMainWindow):
         # Make a figure
         fig, [ax_header, ax_line] = make_fig()
 
-        # Transitions table dataframe
-        table_df = pd.DataFrame(columns=['type_', 'Type', 'Number', 'nu', 'tau', 'd_ij'])
+        # Transitions table dataframe and the bridge from hover to the table
+        table_df = new_table_frame()
+        selection = TransitionSelection()
 
         # Draw transition arrows
         pri_tr_number = 1
@@ -667,8 +674,7 @@ class DiagramWindow(QMainWindow):
             for _, tr in trs_to_lvl.iterrows():
                 pri_trs_text += transition_text(tr, x)
                 tr_arrows.append(draw_transition(ax_line, tr, x, H_STEPS['h-small'], 'pri', pri_tr_number))
-                table_df.loc[len(table_df)] = ['pri', r'$\mathrm{Primary}$', pri_tr_number, tr['nu'], tr['tau'],
-                                               tr['d_ij (D)']]
+                add_row(table_df, 'pri', pri_tr_number, tr)
                 pri_tr_number += 1
                 x += H_STEPS['h-small']
 
@@ -677,33 +683,25 @@ class DiagramWindow(QMainWindow):
             for _, tr in trs_from_lvl.iterrows():
                 sec_trs_text += transition_text(tr, x)
                 tr_arrows.append(draw_transition(ax_line, tr, x, H_STEPS['h-small'], 'sec', sec_tr_number))
-                table_df.loc[len(table_df)] = ['sec', r'$\mathrm{Secondary}$', sec_tr_number, tr['nu'], tr['tau'],
-                                               tr['d_ij (D)']]
+                add_row(table_df, 'sec', sec_tr_number, tr)
                 sec_tr_number += 1
                 x += H_STEPS['h-small']
 
             x_tr += delta_x / 2.
 
-        # Create transitions table
-        table_df.sort_values(by=['Type', 'Number'], ascending=True, inplace=True)
-        table_df.reset_index(drop=True, inplace=True)
-        n_rows = len(table_df) + 1
-        table_fig, table_ax = make_table_fig(n_rows)
-        transition_table = make_table(table_ax, table_df.copy())
-        align_column(transition_table, 2, 'right')
-        for arrow in tr_arrows:
-            change_row_color(arrow, False)
+        table_df = finish_frame(table_df)
 
         # Draw energy levels
         WIDTH = x_tr + H_STEPS['h-large']
-        draw_level_line(ax_header, self.molecule_info.label_template, r"$\mathbf{Energy\,(cm^{-1})}$", header=True,
+        header = draw_level_line(ax_header, self.molecule_info.label_template, r"$\mathbf{Energy\,(cm^{-1})}$", header=True,
                         molecule_name=self.molecule_info.latex_name)
         for _, level in lvls_df.iterrows():
             lvls_text += level_text(level)
             lvl = draw_level_line(ax_line, level.level, f'${level["E"]:0.4f}$', WIDTH, level.y)
             lvls.append(lvl)
+        fig.level_lines = [header, *lvls]  # their labels set the side margins (fit_side_margins)
         # Hover label
-        nu_tau_label = ax_line.text(0, 0, '', ha="left", va="bottom", fontsize=16 * tex_fontsize_factor(),
+        nu_tau_label = ax_line.text(0, 0, '', ha="left", va="bottom", fontsize=HOVER_FONT_SIZE * tex_fontsize_factor(),
                                     color="k", zorder=3,
                                     transform=offset_copy(ax_line.transData, fig=fig, x=50, y=30, units='dots'),
                                     bbox=BBOX_STYLES['nu_tau_label'])
@@ -714,4 +712,4 @@ class DiagramWindow(QMainWindow):
         ax_line.axis("off")
         ax_header.set_ylim(-0.5, 0.5)
         ax_header.axis("off")
-        return fig, ax_line, make_final_text(), lvls, tr_arrows, table_fig
+        return fig, ax_line, make_final_text(), lvls, tr_arrows, table_df, selection

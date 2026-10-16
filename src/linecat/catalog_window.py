@@ -13,7 +13,6 @@ from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QVBoxLayout
 
 from sciwidgets.dialogs import AskResult, ask_question, show_about_dialog, show_warning
 from sciwidgets.labels import set_latex_enabled
-from sciwidgets.panel import ParameterPage
 from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
@@ -21,10 +20,10 @@ from linecat import __version__
 from linecat.cdms import species_in_folder
 from linecat.convert_dialog import convert_with_progress
 from linecat.diagram import DiagramWindow
-from linecat.filters import FrequencyRange
-from linecat.headers import TABLE_FORMATS, filter_label, pretty_header, table_alignment, table_background
+from linecat.filters import FrequencyRange, QuantumFilters
+from linecat.headers import TABLE_FORMATS, pretty_header, table_alignment, table_background
 from linecat.molecules import REGISTRY, MoleculeInfo
-from linecat.widgets import APP_STYLE_SHEET, NATIVE_MENU_BAR, latex_available
+from linecat.widgets import APP_STYLE_SHEET, NATIVE_MENU_BAR, busy, latex_available
 
 __all__ = ["APP_STYLE_SHEET", "CatalogWindow", "latex_available"]
 
@@ -55,8 +54,8 @@ class CatalogWindow(QMainWindow):
         Subset of `ranged_df` further filtered by quantum-state selections.
     filter_keys : list of str
         Quantum-number labels used to build filter controls.
-    filter_page : ParameterPage
-        Combo boxes for the quantum-state filters (paths like 'U-S J').
+    filter_page : QuantumFilters
+        Grid of combo boxes for the quantum-state filters (keys like 'U-S J').
     freq_range : FrequencyRange
         Widget for specifying and converting the frequency range.
     table_view : DataFrameView
@@ -104,11 +103,9 @@ class CatalogWindow(QMainWindow):
 
         # Layout construction
         main_layout = QVBoxLayout()
-        top_layout = QHBoxLayout()
-        self.top_center = QVBoxLayout()
-        self.top_center.addWidget(self.filter_page)
+        self.top_layout = top_layout = QHBoxLayout()
         top_layout.addStretch(1)
-        top_layout.addLayout(self.top_center)
+        top_layout.addWidget(self.filter_page)
         top_layout.addSpacing(20)
         top_layout.addWidget(self.freq_range.groupbox)
         top_layout.addStretch(1)
@@ -279,45 +276,22 @@ class CatalogWindow(QMainWindow):
         return REGISTRY.get(df['Species'].iloc[0])
 
     def create_filter_page(self):
-        """
-        Build a ParameterPage with one combo box per quantum number for each state.
-
-        Returns
-        -------
-        ParameterPage
-            Two groups ('Upper State', 'Lower State'); widget paths are the
-            column names, e.g. 'U-S J'.
-        """
-        def group(title, prefix):
-            return {"group": title, "row": [
-                {"type": "combo-box", "path": prefix + key, "label": filter_label(key), "items": ["All"]}
-                for key in self.filter_keys
-            ]}
-
-        page = ParameterPage({"column": [group("Upper State", "U-S "), group("Lower State", "L-S ")]})
-        page.valueChanged.connect(lambda _path, _value: self.update_filters())
+        """The quantum-number filters for the current molecule (combo paths like 'U-S J')."""
+        page = QuantumFilters(self.filter_keys)
+        page.changed.connect(self.update_filters)
         return page
 
     @property
     def filter_combos(self):
-        """Mapping from filter identifiers (e.g. 'U-S J') to their ParameterComboBox."""
-        return {path: self.filter_page.get_widget(path) for path in self.filter_page.paths()}
+        """Mapping from filter identifiers (e.g. 'U-S J') to their combo box."""
+        return dict(self.filter_page.combos)
 
     def set_filter_keys(self):
-        """
-        Configure quantum-state filter keys and rebuild the filter page.
-
-        Updates `self.filter_keys` from the current molecule and replaces the
-        page of combo boxes with one built for the new set of quantum numbers.
-
-        Returns
-        -------
-        None
-        """
+        """Rebuild the quantum-number filters for the current molecule."""
         self.filter_keys = self.molecule_info.filters
         old = self.filter_page
         self.filter_page = self.create_filter_page()
-        self.top_center.replaceWidget(old, self.filter_page)
+        self.top_layout.replaceWidget(old, self.filter_page)
         old.setParent(None)
         old.deleteLater()
 
@@ -327,15 +301,20 @@ class CatalogWindow(QMainWindow):
 
         Parameters
         ----------
-        range_vals : list of float or str
+        range_vals : list of float or str, or None
             Two-element list [min_MHz, max_MHz], where `max_MHz` can be the
-            string 'max' to indicate the full dataset range.
+            string 'max' to indicate the full dataset range; None when the
+            range filter is switched off (all frequencies).
 
         Returns
         -------
         None
         """
         if self.df is None:
+            return
+        if range_vals is None:
+            self.ranged_df = self.df.astype({'Frequency (MHz)': float})
+            self.update_filters()
             return
         min_val, max_val = range_vals
         if max_val == 'max':
@@ -410,6 +389,10 @@ class CatalogWindow(QMainWindow):
             path, _ = QFileDialog.getOpenFileName(self, "Open Catalog", open_dir, "CSV Files (*.csv)")
             if not path:
                 return
+        with busy(self.status, f"Loading {Path(path).name}…"):
+            self._load_file(path)
+
+    def _load_file(self, path):
         try:
             df = pd.read_csv(path, dtype=str)
         except (OSError, ValueError, pd.errors.ParserError) as exc:
@@ -474,6 +457,11 @@ class CatalogWindow(QMainWindow):
             self.table_view.export_csv(path)
             self.status.set_state(f"Exported {len(self.table_view.visible_frame()):,} lines to {Path(path).name}")
 
+    def open_diagram(self):
+        with busy():
+            self.plot_window = DiagramWindow(self, self.df.copy(), self.filtered_df.copy(), self.molecule_info,
+                                             self.latex_available)
+
     def show_button(self):
         """
             Show the DiagramWindow if the number of filtered transitions is acceptable.
@@ -484,8 +472,7 @@ class CatalogWindow(QMainWindow):
         if self.filtered_df is None or self.filtered_df.empty:
             show_warning("No Transition", "There are no transitions. Nothing to display.", parent=self)
         elif len(self.filtered_df) <= MAX_PLOT_TRANSITIONS:
-            self.plot_window = DiagramWindow(self, self.df.copy(), self.filtered_df.copy(), self.molecule_info,
-                                          self.latex_available)
+            self.open_diagram()
         else:
             reply = ask_question(
                 "Large Number of Transitions",
@@ -495,5 +482,4 @@ class CatalogWindow(QMainWindow):
                 parent=self,
             )
             if reply == AskResult.YES:
-                self.plot_window = DiagramWindow(self, self.df.copy(), self.filtered_df.copy(), self.molecule_info,
-                                              self.latex_available)
+                self.open_diagram()
