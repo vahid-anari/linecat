@@ -7,8 +7,8 @@ from fractions import Fraction
 from pathlib import Path
 
 import pandas as pd
-from PySide6.QtCore import QSettings
-from PySide6.QtGui import QKeySequence
+from PySide6.QtCore import QSettings, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QKeySequence
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
 
 from sciwidgets.dialogs import AskResult, ask_question, show_about_dialog, show_warning
@@ -17,6 +17,7 @@ from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
 from linecat import __version__
+from linecat.builtin import builtin_csv, builtin_dir, ensure_builtin_catalogs
 from linecat.cdms import species_in_folder
 from linecat.convert_dialog import convert_with_progress
 from linecat.diagram import DiagramWindow
@@ -126,13 +127,19 @@ class CatalogWindow(QMainWindow):
         center_on_screen(self, (1400, 900), fallback=(1200, 700))
         if catalog:
             self.load_file(catalog)
+        # build the built-in catalogs (first start, or after an update) once the window is up
+        QTimer.singleShot(0, self.prepare_builtin_catalogs)
 
     # ----- menus -----
     def menu_spec(self):
         recent = [{"id": f"recent_{i}", "text": Path(p).name} for i, p in enumerate(self.recent_catalogs())]
         recent += [{"id": "sep"}, {"id": "clear_recent", "text": "Clear Menu", "enabled": bool(recent)}]
+        builtin = [{"id": f"builtin_{code}", "text": code, "shortcut": f"Ctrl+{i}"}
+                   for i, code in enumerate(REGISTRY, start=1)]
+        builtin += [{"id": "sep"}, {"id": "builtin_folder", "text": "Show Built-in Catalogs Folder"}]
         return {
             "File": [
+                {"submenu": "Open Built-in Catalog", "items": builtin},
                 {"id": "open", "text": "Open Catalog…", "shortcut": QKeySequence.Open},
                 {"submenu": "Open Recent", "items": recent},
                 {"id": "sep"},
@@ -157,7 +164,11 @@ class CatalogWindow(QMainWindow):
         }
 
     def on_menu_action(self, _menu_path, action_id, checked):
-        if action_id == 'open':
+        if action_id == 'builtin_folder':
+            self.show_builtin_folder()
+        elif action_id.startswith('builtin_'):
+            self.open_builtin(action_id.removeprefix('builtin_'))
+        elif action_id == 'open':
             self.load_file()
         elif action_id.startswith('recent_'):
             recent = self.recent_catalogs()
@@ -223,13 +234,41 @@ class CatalogWindow(QMainWindow):
         self.freq_range.reset()
         self.update_range([0, 'max'])
 
+    # ----- built-in catalogs -----
+    def prepare_builtin_catalogs(self):
+        """Build the built-in CSVs if any is missing or was made by another linecat version."""
+        try:
+            with busy(self, "Preparing the built-in catalogs…"):
+                built = ensure_builtin_catalogs()
+        except Exception as exc:  # noqa: BLE001 - shown to the user
+            show_warning("Built-in catalogs", "The built-in catalogs could not be prepared.",
+                         f"{type(exc).__name__}: {exc}", parent=self)
+            return False
+        if built:
+            self.status.set_state(f"Built-in catalogs ready ({', '.join(r.species for r in built)})")
+        elif self.df is None:
+            self.status.set_state("No catalog loaded")
+        return True
+
+    def open_builtin(self, code):
+        """Open the built-in catalog of a species (rebuilt first if it went missing)."""
+        if self.prepare_builtin_catalogs():
+            self.load_file(str(builtin_csv(code)))
+
+    def show_builtin_folder(self):
+        folder = builtin_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
     def show_about(self):
         show_about_dialog(
             "About linecat",
             f"<p><b>linecat</b> {__version__}<br>Viewer for CDMS/JPL spectral line catalogs.</p>"
             "<p>Vahid Anari — MIT License<br>"
             '<a href="https://github.com/vahid-anari/linecat">github.com/vahid-anari/linecat</a></p>'
-            '<p>Catalog data: <a href="https://cdms.astro.uni-koeln.de/">CDMS</a>, Universität zu Köln.</p>',
+            '<p>Catalog data: <a href="https://cdms.astro.uni-koeln.de/">CDMS</a>, Universität zu Köln — '
+            "please cite Müller et al. 2001, A&amp;A 370, L49; Müller et al. 2005, J. Mol. Struct. 742, 215; "
+            "Endres et al. 2016, J. Mol. Spectrosc. 327, 95.</p>",
             parent=self,
         )
 
@@ -245,8 +284,7 @@ class CatalogWindow(QMainWindow):
             show_warning(
                 "Nothing to convert",
                 f"No registered species ({', '.join(REGISTRY)}) has all its .cat files in that folder.",
-                "Choose the folder that holds the species folders (e.g. catalogs/) or one species folder "
-                "(e.g. catalogs/OH/).",
+                "Choose a folder that holds species folders (OH/, CH3OH/, …) or one species folder (e.g. OH/).",
                 parent=self,
             )
             return

@@ -1,10 +1,10 @@
-from pathlib import Path
 
 import pandas as pd
 
+from linecat.builtin import SOURCES_DIR
 from linecat.main import build_parser, main
 
-CATALOGS = Path(__file__).resolve().parent.parent / "catalogs"
+CATALOGS = SOURCES_DIR  # the CDMS files shipped with linecat
 
 
 def test_parser_defaults():

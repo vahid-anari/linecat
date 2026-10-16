@@ -26,6 +26,20 @@ def qapp():
     return app
 
 
+@pytest.fixture(scope="session", autouse=True)
+def builtin_folder(tmp_path_factory):
+    """Built-in catalogs go to a throwaway folder, never the user's application-data folder."""
+    import linecat.builtin
+    import linecat.catalog_window
+
+    folder = tmp_path_factory.mktemp("builtin")
+    patch = pytest.MonkeyPatch()
+    for module in (linecat.builtin, linecat.catalog_window):
+        patch.setattr(module, "builtin_dir", lambda: folder)
+    yield folder
+    patch.undo()
+
+
 @pytest.fixture
 def oh_csv():
     return DATA / "oh_small.csv"

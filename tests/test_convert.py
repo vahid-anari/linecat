@@ -5,9 +5,10 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from linecat.builtin import SOURCES_DIR  # noqa: E402
 from linecat.cdms import ConversionCancelled, ConversionResult, convert_molecule_catalog  # noqa: E402
 
-CATALOGS = Path(__file__).resolve().parent.parent / "catalogs"
+CATALOGS = SOURCES_DIR  # the CDMS files shipped with linecat
 SLICES = Path(__file__).resolve().parent / "data" / "cdms"  # 120 lines spread over each .cat file
 
 

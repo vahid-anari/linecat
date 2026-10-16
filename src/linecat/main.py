@@ -17,8 +17,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     convert = sub.add_parser("convert", help="convert CDMS .cat files to the CSV catalogs the viewer reads")
     convert.add_argument("species", nargs="*", help="species codes (OH, CH3OH, SiO, NH3); none = every one found")
-    convert.add_argument("--catalogs", default=".", metavar="DIR", help="folder with the .cat files (default: .)")
-    convert.add_argument("--output-dir", default=None, metavar="DIR", help="where to write the CSVs (default: DIR)")
+    convert.add_argument("--catalogs", default=None, metavar="DIR",
+                         help="folder with the .cat files (default: the CDMS files shipped with linecat)")
+    convert.add_argument("--output-dir", default=None, metavar="DIR",
+                         help="where to write the CSVs (default: DIR, or the current folder for the shipped files)")
     return parser
 
 
@@ -29,10 +31,12 @@ def _print_progress(species: str, done: int, total: int) -> None:
 
 
 def run_convert(args: argparse.Namespace) -> int:
+    from linecat.builtin import SOURCES_DIR
     from linecat.cdms import convert_all, convert_molecule_catalog
     from linecat.molecules import REGISTRY
 
-    outdir = args.output_dir or args.catalogs
+    outdir = args.output_dir or args.catalogs or "."
+    args.catalogs = args.catalogs or SOURCES_DIR
     if args.species:
         unknown = [code for code in args.species if code not in REGISTRY]
         if unknown:

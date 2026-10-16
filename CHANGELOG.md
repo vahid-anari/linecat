@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-10-16
+
+- Built-in catalogs: the CDMS files of OH, CH3OH, SiO and NH3 ship with linecat. On first start and after each update they are converted (about a second) to read-only CSVs in the application-data folder (macOS: `~/Library/Application Support/linecat/catalogs/`); a missing file is rebuilt.
+- File → Open Built-in Catalog → OH / CH3OH / SiO / NH3 (⌘1–⌘4), File → Show Built-in Catalogs Folder.
+- `linecat convert` uses the shipped files unless `--catalogs` is given (output: the current folder, or `--output-dir`).
+- The repository's `catalogs/` folder is gone (the sources moved to `src/linecat/data/cdms/`; the unused full CH3OH file `c032504.cat` was dropped).
+- README and About name the CDMS references to cite.
+
 ## 0.3.0 — 2026-10-16
 
 - Converting CDMS catalogs is about 150× faster: CH3OH (38,743 lines) takes under a second instead of about two minutes. The physics is computed on whole columns instead of row by row; the CSVs are byte-for-byte the same as before.

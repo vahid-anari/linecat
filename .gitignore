@@ -8,6 +8,4 @@ dist/
 .idea/
 .vscode/
 .DS_Store
-catalogs/**/*.csv
-catalogs/*.csv
 saved_pdf/

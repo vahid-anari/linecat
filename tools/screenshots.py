@@ -1,6 +1,6 @@
 """Render the README screenshots: ``python tools/screenshots.py [CATALOG.csv] [--no-latex]``.
 
-Opens the main window with a catalog (default ``catalogs/CDMS_OH.csv``),
+Opens the main window with a catalog (default: the built-in OH catalog),
 selects J = 3/2 between 1 and 60 GHz, opens the energy-level diagram and
 saves both windows to ``docs/images/``. Uses a throwaway settings folder, so
 your own linecat settings are not touched. Run it on the Mac (Retina, LaTeX)
@@ -21,12 +21,18 @@ OUT = ROOT / "docs" / "images"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render the README screenshots into docs/images/.")
-    parser.add_argument("catalog", nargs="?", default=str(ROOT / "catalogs" / "CDMS_OH.csv"))
+    parser.add_argument("catalog", nargs="?", default=None, help="CSV catalog (default: built-in OH)")
     parser.add_argument("--no-latex", action="store_true", help="mathtext labels even if LaTeX is installed")
     args = parser.parse_args()
-    catalog = Path(args.catalog)
+    if args.catalog is None:
+        from linecat.builtin import builtin_csv, ensure_builtin_catalogs
+
+        ensure_builtin_catalogs()
+        catalog = builtin_csv("OH")
+    else:
+        catalog = Path(args.catalog)
     if not catalog.is_file():
-        print(f"{catalog} not found — run: linecat convert OH --catalogs catalogs", file=sys.stderr)
+        print(f"{catalog} not found", file=sys.stderr)
         return 1
     QSettings.setPath(QSettings.NativeFormat, QSettings.UserScope, tempfile.mkdtemp())
 

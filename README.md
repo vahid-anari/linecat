@@ -30,14 +30,15 @@ linecat
 ## Use
 
 ```
-linecat                      open the viewer
-linecat catalogs/CDMS_OH.csv open a catalog at start
-linecat convert --catalogs catalogs           convert every species found
-linecat convert OH CH3OH --catalogs catalogs  convert some species
+linecat                       open the viewer
+linecat my_catalog.csv        open a catalog at start
+linecat convert               convert the shipped CDMS files into the current folder
+linecat convert OH --catalogs my_cats --output-dir out   convert your own .cat files
 linecat --version
 ```
 
-File → Open Catalog… loads a CSV; the quantum-number filters and the
+File → Open Built-in Catalog → OH / CH3OH / SiO / NH3 (⌘1–⌘4) opens a
+catalog that ships with linecat; File → Open Catalog… loads any other CSV; the quantum-number filters and the
 frequency range narrow the table; File → Export Table as CSV… writes what is
 shown; Transitions → Show Energy-Level Diagram draws the selected lines
 (hover for ν and τ, double-click a transition for the lines from its lower
@@ -45,9 +46,18 @@ level). Right-click a column header for colours, alignment, font and columns.
 
 ## Catalogs
 
-The CDMS `.cat` sources are in `catalogs/`. Convert them to the CSV files the
-viewer reads with `linecat convert --catalogs catalogs` (or File → Convert
-CDMS Catalogs… in the app). The generated CSVs are not committed.
+linecat ships the CDMS `.cat` files of OH, CH3OH, SiO and NH3
+(`src/linecat/data/cdms/`). On first start, and after every linecat update, it
+converts them to read-only CSV files in the application-data folder
+(macOS: `~/Library/Application Support/linecat/catalogs/`; File → Show
+Built-in Catalogs Folder). If a file goes missing it is rebuilt. Your own
+`.cat` files (a newer CDMS release, say) can be converted with File → Convert
+CDMS Catalogs… or `linecat convert --catalogs DIR`.
+
+The catalog data come from the Cologne Database for Molecular Spectroscopy
+([CDMS](https://cdms.astro.uni-koeln.de/)); please cite Müller et al. 2001,
+A&A 370, L49; Müller et al. 2005, J. Mol. Struct. 742, 215; and Endres et al.
+2016, J. Mol. Spectrosc. 327, 95.
 
 ## Tests
 
@@ -57,7 +67,7 @@ pytest
 
 The window tests run offscreen with the small catalog in `tests/data/`.
 `python tools/screenshots.py` renders the two pictures above into
-`docs/images/` (it needs `catalogs/CDMS_OH.csv`).
+`docs/images/` (from the built-in OH catalog).
 
 ## License
 
