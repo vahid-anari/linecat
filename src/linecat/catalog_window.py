@@ -2,13 +2,11 @@ from __future__ import annotations
 from typing import Iterable, List
 
 # Standard library
-import os
-import io
 import re
+import shutil
 
 # Third-party
 from pathlib import Path
-import shutil
 import pandas as pd
 import numpy as np
 import matplotlib as mpl
@@ -19,17 +17,20 @@ from matplotlib.transforms import blended_transform_factory, offset_copy
 from matplotlib.backends.backend_pdf import PdfPages
 
 # Qt / PySide6
-from PySide6.QtCore import Qt, QRegularExpression, QCoreApplication, Signal, QAbstractTableModel, QModelIndex
-from PySide6.QtGui import QBrush, QColor, QRegularExpressionValidator, QGuiApplication
-from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
+from PySide6.QtGui import QBrush, QColor, QGuiApplication
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QGridLayout,
-    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QSizePolicy,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QTabWidget, QProgressBar, QScrollArea, QSlider, QTextEdit,
-    QSplitter, QStyleFactory, QProxyStyle, QStyle, QStyleOptionSlider, QTableView
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QGridLayout,
+    QGroupBox, QHBoxLayout, QLabel, QMainWindow, QPushButton, QSizePolicy,
+    QVBoxLayout, QWidget, QTabWidget, QScrollArea, QTextEdit,
+    QSplitter, QTableView
 )
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+
+from sciwidgets.dialogs import AskResult, ask_question, show_information, show_warning
+from sciwidgets.labels import MathLabel
+from sciwidgets.params import FloatSlider, IntSlider, NumericLineEdit, SliderFeature
 
 # External
 from linecat.molecules import MoleculeInfo, REGISTRY  # provides species metadata/behavior
@@ -51,7 +52,8 @@ BBOX_STYLES = {
     'sec-trs': dict(boxstyle="round,pad=0.3", facecolor='lightblue', edgecolor='darkblue', linewidth=1.5),
 }
 GROUPBOX_MARGIN = [7, 10, 7, 4]  # [left, top, right, bottom]
-GROUPBOX_STYLE = """
+# Appended to the sciwidgets style sheet by linecat.main
+APP_STYLE_SHEET = """
                     QGroupBox {
                         border: 1.4px solid black;
                         border-radius: 10px;
@@ -115,146 +117,6 @@ class DataFrameModel(QAbstractTableModel):
         return str(section + 1)
 
 
-class CustomSliderStyle(QProxyStyle):
-    """Fusion-based style:
-       - disabled sliders: flat gray groove
-       - left-click on groove: jump to click position
-    """
-
-    def __init__(self, base_style_name: str = "Fusion"):
-        base = QStyleFactory.create(base_style_name)
-        super().__init__(base)
-
-    # 1) Change click behaviour: jump to mouse position on left click
-    def styleHint(self, hint, option=None, widget=None, returnData=None):
-        if hint == QStyle.SH_Slider_AbsoluteSetButtons:
-            # Left button causes absolute set (jump to position)
-            return Qt.LeftButton.value
-        if hint == QStyle.SH_Slider_PageSetButtons:
-            # Disable page-step on click
-            return 0
-        return super().styleHint(hint, option, widget, returnData)
-
-    # 2) Custom painting for disabled sliders
-    def drawComplexControl(self, control, option, painter, widget=None):
-        if control == QStyle.CC_Slider and isinstance(option, QStyleOptionSlider):
-            # Disabled slider: our own groove + base-style handle
-            if not (option.state & QStyle.State_Enabled):
-                opt = QStyleOptionSlider(option)
-
-                # Groove rectangle (track)
-                groove_rect = self.subControlRect(
-                    QStyle.CC_Slider,
-                    opt,
-                    QStyle.SC_SliderGroove,
-                    widget,
-                )
-
-                # Draw flat gray groove FIRST (background)
-                painter.save()
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(QColor("#cccccc"))
-                painter.drawRect(groove_rect)
-                painter.restore()
-
-                # Now draw ONLY the handle on top, using base style
-                opt_handle = QStyleOptionSlider(option)
-                opt_handle.subControls = QStyle.SC_SliderHandle
-                super().drawComplexControl(control, opt_handle, painter, widget)
-                return
-
-            # Enabled slider: normal Fusion drawing
-            return super().drawComplexControl(control, option, painter, widget)
-
-        # All other controls: default behaviour
-        return super().drawComplexControl(control, option, painter, widget)
-
-
-class InputValue:
-    """
-    Numeric input widget combining QLabel and QLineEdit.
-
-    Presents a label next to a line edit that enforces numeric input
-    and formats values to a fixed number of decimal places.
-
-    Parameters
-    ----------
-    label : str
-        Text to display on the QLabel.
-    decimals : int
-        Number of decimal digits to display in the line edit.
-
-    Attributes
-    ----------
-    decimals : int
-        Decimal precision for formatting the input value.
-    label : QLabel
-        Descriptor label for the input field.
-    line_edit : QLineEdit
-        Widget for entering numeric values.
-    layout : QHBoxLayout
-        Layout containing the label and line edit widgets.
-    """
-
-    def __init__(self, label, decimals):
-        """
-        Initialize the InputValue widget.
-
-        Parameters
-        ----------
-        label : str
-            Text to display on the QLabel.
-        decimals : int
-            Number of decimal digits to enforce in the line edit.
-
-        Returns
-        -------
-        None
-        """
-        self.decimals = decimals
-        self.label = create_label(label, 'Right')
-        self.line_edit = QLineEdit()
-        self.line_edit.setPlaceholderText('e.g. 123.45')
-        self.line_edit.setAlignment(Qt.AlignRight)
-
-        validator = QRegularExpressionValidator(
-            QRegularExpression(r'^\d*\.?\d*$')
-        )
-        self.line_edit.setValidator(validator)
-
-        self.layout = QHBoxLayout()
-        self.layout.addWidget(self.label)
-        self.layout.addWidget(self.line_edit)
-
-    def set_value(self, value):
-        """
-        Set the numeric value in the line edit.
-
-        Parameters
-        ----------
-        value : float
-            Numeric value to display, rounded to the configured decimal places.
-
-        Returns
-        -------
-        None
-        """
-        formatted = f"{value:.{self.decimals}f}"
-        self.line_edit.setText(formatted)
-
-    def get_value(self):
-        """
-        Get the numeric value from the line edit.
-
-        Returns
-        -------
-        float
-            Parsed float value from the input, or 0.0 if the field is empty.
-        """
-        text = self.line_edit.text().strip()
-        return float(text) if text else 0.0
-
-
 class FrequencyRange:
     """
     Widget for selecting and converting frequency ranges across multiple units.
@@ -275,9 +137,9 @@ class FrequencyRange:
         Mapping of unit labels to their conversion factors into MHz.
     unit : str
         Last valid unit label (used to revert the combo on invalid input).
-    from_value : InputValue
+    from_value : NumericLineEdit
         Input widget for the lower‐bound value.
-    to_value : InputValue
+    to_value : NumericLineEdit
         Input widget for the upper‐bound value.
     unit_combo : QComboBox
         Dropdown for selecting display units.
@@ -310,26 +172,36 @@ class FrequencyRange:
             'μm': c, 'mm': c * 1e-3, 'm': c * 1e-6,
         }
         self.unit = 'MHz'
-        self.from_value = InputValue('From', 3)
-        self.to_value = InputValue('To', 3)
+        self.from_value = self._make_line_edit()
+        self.to_value = self._make_line_edit()
         unit_layout, self.unit_combo = create_combo(
             'Frequency Unit',
             items=list(self.units_dict.keys()),
             item=self.unit,
-            svg=False
+            math=False
         )
         self.apply_button = create_button('Apply', self.update_range)
 
         self.groupbox = QGroupBox('Frequency Range')
         self.layout = QVBoxLayout(self.groupbox)
-        self.groupbox.setStyleSheet(GROUPBOX_STYLE)
         self.layout.setContentsMargins(*GROUPBOX_MARGIN)
         self.layout.addStretch()
-        self.layout.addLayout(self.from_value.layout)
-        self.layout.addLayout(self.to_value.layout)
+        self.layout.addLayout(self._labeled('From', self.from_value))
+        self.layout.addLayout(self._labeled('To', self.to_value))
         self.layout.addLayout(unit_layout)
         self.layout.addWidget(self.apply_button, alignment=Qt.AlignHCenter)
         self.layout.addStretch()
+
+    @staticmethod
+    def _make_line_edit():
+        return NumericLineEdit(0.0, val_fmt='{:.3f}', min_limit=0.0, place_holder_text='e.g. 123.45')
+
+    @staticmethod
+    def _labeled(text, widget):
+        layout = QHBoxLayout()
+        layout.addWidget(create_label(text, 'Right'))
+        layout.addWidget(widget)
+        return layout
 
     def _get_conversion_factor(self):
         """
@@ -419,7 +291,7 @@ class FrequencyRange:
         Update UI inputs to reflect the internal frequency range in display units.
 
         Converts the stored `range_value` (in MHz) into the currently selected units
-        and updates the 'From' and 'To' InputValue widgets accordingly, handling
+        and updates the 'From' and 'To' NumericLineEdit widgets accordingly, handling
         reciprocal units as needed.
 
         Returns
@@ -647,53 +519,6 @@ class ScrollableCanvas(FigureCanvasQTAgg):
             super().wheelEvent(event)
 
 
-class NewSlider(QWidget):
-    value_changed = Signal(int)
-
-    def __init__(self, label, min, max, init, num_decimals=0, percentage=False, divider=1.):
-        super().__init__()
-        self.num_decimals = num_decimals
-        self.percentage = percentage
-        self.divider = divider
-        # 1) Create the slider
-        self._slider = QSlider(Qt.Horizontal, self)
-        self._slider.setRange(min, max)
-        self._slider.setValue(init)
-        # 2) Create the label
-        self._label_name = QLabel(label, self)
-        self._label_name.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self._label_value = QLabel(self._label(init / divider), self)
-        self._label_value.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        # 3) Lay them out
-        self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.addWidget(self._label_name, 0)
-        self.layout.addWidget(self._slider, 1)
-        self.layout.addWidget(self._label_value, 0)
-        # 4) Hook up the signal
-        self._slider.valueChanged.connect(self._on_value_changed)
-
-    def _label(self, val):
-        if self.percentage:
-            return f"{val:0.{self.num_decimals}f}%"
-        return f"{val:0.{self.num_decimals}f}"
-
-    def _on_value_changed(self, val):
-        self._label_value.setText(self._label(val / self.divider))
-        self.value_changed.emit(val)
-
-    def value(self):
-        return self._slider.value() / self.divider
-
-    def setValue(self, val, block_signal):
-        if block_signal:
-            self._slider.blockSignals(True)
-        self._slider.setValue(val * self.divider)
-        self._label_value.setText(self._label(val))
-        if block_signal:
-            self._slider.blockSignals(False)
-
-
 class TabContent:
     def __init__(self, fig, ax, latex_txt, lvls, arrows, lvls_df, trs_df, table_fig):
         self.comps_dict = {
@@ -871,7 +696,6 @@ class PlotWindow(QMainWindow):
         self.export_pdf_button = create_button("Save Figure", self.export_pdf)
         # Group Box
         group_box = QGroupBox("Export")
-        group_box.setStyleSheet(GROUPBOX_STYLE)
         group_layout = QVBoxLayout()
         group_layout.setContentsMargins(*GROUPBOX_MARGIN)
         group_layout.addWidget(self.latex_format_button)
@@ -889,7 +713,6 @@ class PlotWindow(QMainWindow):
         self.use_latex_checkbox.toggled.connect(self.on_checkboxes_toggled)
         # Group Box
         group_box = QGroupBox("View")
-        group_box.setStyleSheet(GROUPBOX_STYLE)
         group_layout = QVBoxLayout()
         group_layout.setContentsMargins(*GROUPBOX_MARGIN)
         group_layout.addWidget(self.sec_trs_checkbox)
@@ -899,13 +722,12 @@ class PlotWindow(QMainWindow):
 
     def make_zoom_group_box(self):
         # Sliders
-        self.hori_zoom_slider = NewSlider('Horizontal', 10, 300, 100, percentage=True)
-        self.hori_zoom_slider.value_changed.connect(lambda x: self.zoom(x, direction='h'))
-        self.vert_zoom_slider = NewSlider('Vertical', 10, 600, 100, percentage=True)
-        self.vert_zoom_slider.value_changed.connect(lambda x: self.zoom(x, direction='v'))
+        self.hori_zoom_slider = make_slider('Horizontal', 10, 300, 100)
+        self.hori_zoom_slider.valueChanged.connect(lambda x: self.zoom(x, direction='h'))
+        self.vert_zoom_slider = make_slider('Vertical', 10, 600, 100)
+        self.vert_zoom_slider.valueChanged.connect(lambda x: self.zoom(x, direction='v'))
         # Group Box
         group_box = QGroupBox("Zoom")
-        group_box.setStyleSheet(GROUPBOX_STYLE)
         group_layout = QVBoxLayout()
         group_layout.setContentsMargins(*GROUPBOX_MARGIN)
         group_layout.addWidget(self.hori_zoom_slider)
@@ -915,15 +737,14 @@ class PlotWindow(QMainWindow):
 
     def make_real_scale_group_box(self):
         # Sliders
-        self.coarse_scale_slider = NewSlider('Coarse', 0, 95, 0, percentage=True)
-        self.coarse_scale_slider.value_changed.connect(self.change_y_positions)
-        self.fine_scale_slider = NewSlider('Fine', 0, 500, 0, num_decimals=2, percentage=True, divider=100.)
-        self.fine_scale_slider.value_changed.connect(self.change_y_positions)
+        self.coarse_scale_slider = make_slider('Coarse', 0, 95, 0)
+        self.coarse_scale_slider.valueChanged.connect(self.change_y_positions)
+        self.fine_scale_slider = make_slider('Fine', 0.0, 5.0, 0.0, val_fmt='{:.2f}')
+        self.fine_scale_slider.valueChanged.connect(self.change_y_positions)
         self.coarse_scale_slider.setToolTip("Main scaling factor for Y-axis spacing")
         self.fine_scale_slider.setToolTip("Fine adjustment for Y-axis spacing")
         # Group Box
         group_box = QGroupBox("Real Scale")
-        group_box.setStyleSheet(GROUPBOX_STYLE)
         group_layout = QVBoxLayout()
         group_layout.setContentsMargins(*GROUPBOX_MARGIN)
         group_layout.addWidget(self.coarse_scale_slider)
@@ -953,11 +774,11 @@ class PlotWindow(QMainWindow):
         with PdfPages(path) as pdf:
             pdf.savefig(fig)
             pdf.savefig(table_fig)
-        QMessageBox.information(self, "Success", "Figure saved successfully!")
+        show_information("Success", "Figure saved successfully!", parent=self)
 
     def change_y_positions(self, event):
-        coarse_scale_factor = self.coarse_scale_slider.value() / 100.
-        fine_scale_factor = self.fine_scale_slider.value() / 100.
+        coarse_scale_factor = self.coarse_scale_slider.get_value() / 100.
+        fine_scale_factor = self.fine_scale_slider.get_value() / 100.
         idx = self.tabs.currentIndex()
         tab_content = self.tabs_content[idx]
         tab_content.set_real_size(coarse_scale_factor, fine_scale_factor)
@@ -1018,12 +839,12 @@ class PlotWindow(QMainWindow):
         checkbox.blockSignals(False)
 
     def sec_trs_checkbox_failed(self, tab_content):
-        QMessageBox.warning(self, "No Secondary Transition", "No secondary transitions found.")
+        show_warning("No Secondary Transition", "No secondary transitions found.", parent=self)
         self.set_checkbox_block_signal(self.sec_trs_checkbox, False)
         tab_content.sec_trs_checkbox = False
 
     def use_latex_checkbox_failed(self, tab_content):
-        QMessageBox.warning(self, "Failed", "❌ LaTeX is not available.")
+        show_warning("LaTeX not available", "LaTeX was not found on this computer.", parent=self)
         self.set_checkbox_block_signal(self.use_latex_checkbox, False)
         tab_content.use_latex_checkbox = False
 
@@ -1069,7 +890,7 @@ class PlotWindow(QMainWindow):
     def close_tab(self, idx):
         tab_title = self.tabs.tabText(idx)
         if tab_title == "Primary Transitions":
-            QMessageBox.information(self, "Not Allowed", "You cannot close the Primary Transitions tab.")
+            show_information("Not Allowed", "You cannot close the Primary Transitions tab.", parent=self)
             return
         tab = self.tabs.widget(idx)
         self.tabs.removeTab(idx)
@@ -1093,10 +914,10 @@ class PlotWindow(QMainWindow):
         fine_scale_factor = comps['fine scale factor']
         self.set_checkbox_block_signal(self.sec_trs_checkbox, sec_trs_checked)
         self.set_checkbox_block_signal(self.use_latex_checkbox, use_latex_checkbox)
-        self.hori_zoom_slider.setValue(zoom[0] * 100, True)
-        self.vert_zoom_slider.setValue(zoom[1] * 100, True)
-        self.coarse_scale_slider.setValue(coarse_scale_factor * 100., True)
-        self.fine_scale_slider.setValue(fine_scale_factor * 100., True)
+        self.hori_zoom_slider.set_value(round(zoom[0] * 100))
+        self.vert_zoom_slider.set_value(round(zoom[1] * 100))
+        self.coarse_scale_slider.set_value(round(coarse_scale_factor * 100.))
+        self.fine_scale_slider.set_value(fine_scale_factor * 100.)
         self.center_scroll()
         fig.canvas.draw_idle()
 
@@ -1120,15 +941,15 @@ class PlotWindow(QMainWindow):
         canvas.setMinimumSize(new_w_px, new_h_px)
         canvas.resize(new_w_px, new_h_px)
         self.center_scroll()
-        self.hori_zoom_slider.setValue(zoom[0] * 100, True)
-        self.vert_zoom_slider.setValue(zoom[1] * 100, True)
+        self.hori_zoom_slider.set_value(round(zoom[0] * 100))
+        self.vert_zoom_slider.set_value(round(zoom[1] * 100))
         fig.canvas.draw_idle()
 
     def reset_sliders(self):
-        self.hori_zoom_slider.setValue(100, True)
-        self.vert_zoom_slider.setValue(100, True)
-        self.coarse_scale_slider.setValue(0, True)
-        self.fine_scale_slider.setValue(0, True)
+        self.hori_zoom_slider.set_value(100)
+        self.vert_zoom_slider.set_value(100)
+        self.coarse_scale_slider.set_value(0)
+        self.fine_scale_slider.set_value(0.0)
 
     def build_compatible_df(self, df):
         def make_tr_text(temp_df):
@@ -1216,8 +1037,8 @@ class PlotWindow(QMainWindow):
         return True
 
     def add_pri_comps_to_tab_content(self, tab_content):
-        self.hori_zoom_slider.setValue(100, True)
-        self.vert_zoom_slider.setValue(100, True)
+        self.hori_zoom_slider.set_value(100)
+        self.vert_zoom_slider.set_value(100)
         pri_trs_df = tab_content.comps_dict['pri']['trs df']
         pri_lvls_df = tab_content.comps_dict['pri']['lvls df']
         fig, ax, latex_txt, lines, arrows, table_fig = self.build_trs_fig(pri_lvls_df, pri_trs_df, use_latex=True)
@@ -1228,7 +1049,7 @@ class PlotWindow(QMainWindow):
 
     def build_new_tab(self, trs_df, title):
         if trs_df.empty:
-            QMessageBox.warning(self, "No Transition", "No transitions found. Nothing to display.")
+            show_warning("No Transition", "No transitions found. Nothing to display.", parent=self)
         else:
             self.reset_sliders()
             tab_content = self.build_pri_comps(trs_df)
@@ -1462,7 +1283,7 @@ class PlotWindow(QMainWindow):
             table_fig.canvas.draw_idle()
 
         def on_press(event):
-            if event.inaxes == ax_line and event.button == 1 and event.dblclick == True:
+            if event.inaxes == ax_line and event.button == 1 and event.dblclick:
                 x, y = event.xdata, event.ydata
                 for arrow in tr_arrows:
                     if arrow.contain(x, y):
@@ -1526,7 +1347,7 @@ class PlotWindow(QMainWindow):
                         molecule_name=self.molecule_info.latex_name)
         for _, level in lvls_df.iterrows():
             lvls_text += level_text(level)
-            lvl = draw_level_line(ax_line, level.level, f'${level['E']:0.4f}$', WIDTH, level.y)
+            lvl = draw_level_line(ax_line, level.level, f'${level["E"]:0.4f}$', WIDTH, level.y)
             lvls.append(lvl)
         # Hover label
         nu_tau_label = ax_line.text(0, 0, '', ha="left", va="bottom", fontsize=16 * tex_fontsize_factor(),
@@ -1594,10 +1415,9 @@ class DisplayDataApp(QMainWindow):
         None
         """
         super().__init__()
-        self.setWindowTitle("Display Data")
-        QApplication.setStyle(CustomSliderStyle('Fusion'))
+        self.setWindowTitle("linecat")
 
-        self.latex_available = check_Latex(self)
+        self.latex_available = latex_available()
         self.molecule_info: MoleculeInfo = REGISTRY['OH']
 
         # Control buttons
@@ -1611,9 +1431,6 @@ class DisplayDataApp(QMainWindow):
         self.filter_combos = {}
         self.upper_state_box = self.create_filter_group_box('Upper State', 'U-S ')
         self.lower_state_box = self.create_filter_group_box('Lower State', 'L-S ')
-
-        # Progress Bar
-        self.progress_bar = creat_progress_bar('Loading...', '#05B8CC')
 
         # Table for displaying results
         self.table_view = QTableView()
@@ -1661,8 +1478,6 @@ class DisplayDataApp(QMainWindow):
 
         # Finish the main layout
         main_layout.addLayout(top_layout, 0)
-        main_layout.addSpacing(3)
-        main_layout.addWidget(self.progress_bar, 0)
         main_layout.addSpacing(3)
         main_layout.addWidget(self.table_view, 1)
         main_layout.addWidget(self.labels["N_rows"], 0, alignment=Qt.AlignHCenter)
@@ -1724,10 +1539,9 @@ class DisplayDataApp(QMainWindow):
         """
         box = QGroupBox(name)
         layout = QGridLayout(box)
-        box.setStyleSheet(GROUPBOX_STYLE)
         layout.setContentsMargins(*GROUPBOX_MARGIN)  # (left, top, right, bottom)
         for i, key in enumerate(self.filter_keys):
-            combo_layout, combo = create_combo(key, self.latex_available, self.update_filters, width=70)
+            combo_layout, combo = create_combo(key, self.update_filters, width=70)
             self.filter_combos[prefix + key] = combo
             layout.addLayout(combo_layout, 0, i)
         return box
@@ -1866,8 +1680,8 @@ class DisplayDataApp(QMainWindow):
 
         df = pd.read_csv(path, dtype=str)
         if df.empty:
-            self.labels['file name'].setText(f"The file {path.split('/')[-1]} is empty!")
-            QMessageBox.warning(self, "Failed", "Loaded file is empty.")
+            self.labels['file name'].setText(f"The file {Path(path).name} is empty!")
+            show_warning("Failed", "Loaded file is empty.", parent=self)
             return
 
         self.df = df
@@ -1878,10 +1692,9 @@ class DisplayDataApp(QMainWindow):
             self.update_range([0, 'max'])
             self.export_button.setEnabled(True)
             self.show_transitions_button.setEnabled(True)
-            self.labels['file name'].setText(f"{df.shape[0]} lines from '{path.split('/')[-1]}' loaded.")
-            QMessageBox.information(self, "Success", f"Loaded {path.split('/')[-1]} successfully!")
+            self.labels['file name'].setText(f"{df.shape[0]} lines from '{Path(path).name}' loaded.")
         else:
-            QMessageBox.warning(self, "Failed", "Loaded file is empty, unknown or invalid.")
+            show_warning("Failed", "Loaded file is empty, unknown or invalid.", parent=self)
 
     def open_select_columns_dialog(self):
         """
@@ -1895,7 +1708,7 @@ class DisplayDataApp(QMainWindow):
         None
         """
         if self.df is None:
-            QMessageBox.warning(self, "Error", "Load a file first!")
+            show_warning("Error", "Load a file first!", parent=self)
             return
         dialog = QDialog(self)
         dialog.setWindowTitle("Select Columns to Display")
@@ -1943,7 +1756,7 @@ class DisplayDataApp(QMainWindow):
         None
         """
         if self.df is None:
-            QMessageBox.warning(self, "Error", "No data to export!")
+            show_warning("Error", "No data to export!", parent=self)
             return
 
         df = self.filtered_df if (self.filtered_df is not None and not self.filtered_df.empty) else self.df
@@ -1953,7 +1766,7 @@ class DisplayDataApp(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "Save CSV File", "", "CSV Files (*.csv)")
         if path:
             df.to_csv(path, index=False)
-            QMessageBox.information(self, "Success", "Data exported successfully!")
+            show_information("Success", "Data exported successfully!", parent=self)
 
     def show_button(self):
         """
@@ -1963,19 +1776,19 @@ class DisplayDataApp(QMainWindow):
             asking the user whether to continue.
             """
         if self.filtered_df.empty:
-            QMessageBox.warning(self, "No Transition", "There is no transitions. Nothing to display.")
+            show_warning("No Transition", "There are no transitions. Nothing to display.", parent=self)
         elif len(self.filtered_df) <= 50:
             self.plot_window = PlotWindow(self, self.df.copy(), self.filtered_df.copy(), self.molecule_info,
                                           self.latex_available)
         else:
-            reply = QMessageBox.question(
-                self,
+            reply = ask_question(
                 "Large Number of Transitions",
-                "You are trying to plot more than 50 transitions.\n"
-                "This may slow down the rendering.\n\nDo you want to continue?",
-                QMessageBox.Yes | QMessageBox.No
+                "You are trying to plot more than 50 transitions.",
+                "This may slow down the rendering. Do you want to continue?",
+                yes_btn_label="Continue",
+                parent=self,
             )
-            if reply == QMessageBox.Yes:
+            if reply == AskResult.YES:
                 self.plot_window = PlotWindow(self, self.df.copy(), self.filtered_df.copy(), self.molecule_info,
                                               self.latex_available)
 
@@ -1983,74 +1796,24 @@ class DisplayDataApp(QMainWindow):
 # =============================================================================
 # Helper UI Creation Functions
 # =============================================================================
-def check_Latex(parent=None):
-    """
-    Check for a LaTeX installation and toggle SVG rendering support.
+def latex_available() -> bool:
+    """Return True when a ``latex`` executable is on the PATH."""
+    return shutil.which("latex") is not None
 
-    Queries the system for the `latex` executable. If found, enables SVG-based
-    LaTeX rendering for UI labels; otherwise disables it and warns the user.
 
-    Returns
-    -------
-    Bool
-        True if a LaTeX installation is found, False otherwise.
-    """
-    if shutil.which("latex") is not None:
-        print("✅ LaTeX is available.")
-        return True
-    else:
-        print("❌ LaTeX is not available.")
-        if parent:
-            QMessageBox.warning(parent, "Failed", "❌ LaTeX is not available.")
-        return False
+def make_slider(label, min_val, max_val, init_val, val_fmt=None):
+    """Percent slider without range labels or context menu (zoom and scale controls)."""
+    if isinstance(min_val, float):
+        return FloatSlider(label, min_val, max_val, unit=r"\%", init_val=init_val, val_fmt=val_fmt or "{:.2f}",
+                           show_range=False, features=SliderFeature.NONE)
+    return IntSlider(label, min_val, max_val, unit=r"\%", init_val=init_val, show_range=False,
+                     features=SliderFeature.NONE)
 
 
 def tex_fontsize_factor():
     if mpl.rcParams['text.usetex']:
         return 1.2
     return 1.
-
-
-def create_text_svg(use_latex, latex_text, fontsize=20):
-    """
-    Generate a transparent SVG rendering of a LaTeX expression.
-
-    Uses Matplotlib to render the given LaTeX string into a tightly-cropped,
-    transparent-background SVG.
-
-    Parameters
-    ----------
-    use_latex : bool
-        If True, enable Matplotlib’s `usetex` backend for LaTeX rendering.
-    latex_text : str
-        The LaTeX expression to render, e.g., r"$\alpha+\beta$".
-    fontsize : int, optional
-        Font size for rendering the text.  Defaults to 20.
-
-    Returns
-    -------
-    bytes
-        SVG image data encoded as UTF-8.
-    """
-    fig = plt.figure()
-    fig.text(
-        0.5, 0.5, latex_text,
-        fontsize=fontsize,
-        ha='center',
-        va='center',
-        usetex=use_latex,
-    )
-    buf = io.BytesIO()
-    plt.savefig(
-        buf,
-        format='svg',
-        bbox_inches='tight',
-        pad_inches=0.06,
-        transparent=True
-    )
-    plt.close(fig)
-    buf.seek(0)
-    return buf.read()
 
 
 def create_label(text, alignment='Center', h_size_policy=QSizePolicy.Fixed, v_size_policy=QSizePolicy.Fixed):
@@ -2113,74 +1876,41 @@ def create_button(name, callback_func, enable=True):
     return button
 
 
-def creat_progress_bar(text, color):
-    progress = QProgressBar()
-    progress.setRange(0, 100)
-    progress.setValue(0)
-    progress.setFormat(f"{text} %p%")  # Show percentage
-    progress.setAlignment(Qt.AlignCenter)
-    progress.setVisible(False)
-    # Style the progress bar color
-    progress.setStyleSheet(f"""
-            QProgressBar {{
-                border: 2px solid black;
-                border-radius: 5px;
-                text-align: center;
-            }}
-            QProgressBar::chunk {{
-                background-color: {color};
-                width: 10px;
-            }}
-        """)
-    return progress
-
-
-def create_combo(name, use_latex=False, callback_func=None, items=None, item='', svg=True, width=None):
+def create_combo(name, callback_func=None, items=None, item='', math=True, width=None):
     """
-    Create a labeled QComboBox with optional SVG-rendered label.
-
-    The returned layout contains either an SVG widget (if `svg=True`) or a
-    plain QLabel, followed by the QComboBox itself.
+    Create a labeled QComboBox.
 
     Parameters
     ----------
     name : str
-        Label text or LaTeX expression if `svg=True`.
-    use_latex : bool, optional
-        Whether to render the label using Matplotlib’s LaTeX engine. Defaults to False.
+        Label text; rendered as math (``MathLabel``) when ``math`` is True.
     callback_func : callable or None, optional
-        Function to connect to the combo’s `currentIndexChanged` signal.
-        Defaults to None (no callback).
+        Function to connect to the combo's ``currentIndexChanged`` signal.
     items : list of str or None, optional
-        Items to populate the combo box. Defaults to None.
+        Items to populate the combo box.
     item : str, optional
-        Initial selected item (must match one of `items`). Defaults to ''.
-    svg : bool, optional
-        If True, render the label via SVG+LaTeX; else use plain text.
-        Defaults to True.
+        Initial selected item (must match one of ``items``).
+    math : bool, optional
+        If True, render the label with ``MathLabel``; else a plain ``QLabel``.
     width : int or None, optional
-        Fixed pixel width for the combo box. Defaults to None (no fixed width).
+        Fixed pixel width for the combo box.
 
     Returns
     -------
     layout : QHBoxLayout
-        Layout containing the label (SVG or text) and the combo box.
+        Layout containing the label and the combo box.
     combo : QComboBox
         The configured combo box widget.
     """
     layout = QHBoxLayout()
     layout.setSpacing(1)
-    if svg:
-        expr = f'$\\{name}$' if name == 'Omega' else f'${name}$'
-        svg_data = create_text_svg(use_latex, expr, fontsize=20)
-        svg_widget = QSvgWidget()
-        svg_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        svg_widget.load(svg_data)
-        layout.addWidget(svg_widget)
+    if math:
+        expr = '\\Omega' if name == 'Omega' else name
+        label = MathLabel(expr, font_size=20, fix_size=True)
     else:
         label = create_label(name, alignment='Right')
         label.setStyleSheet('padding: 0px;')
-        layout.addWidget(label)
+    layout.addWidget(label)
 
     combo = QComboBox()
     combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -2280,13 +2010,3 @@ def pretty_header(h: str) -> str:
 def convert_header(headers: Iterable[str]) -> List[str]:
     """Reformat headers for plotting (newline-separated units, auto U-S/L-S)."""
     return [pretty_header(h) for h in headers]
-
-
-# =============================================================================
-# Main Entry Point
-# =============================================================================
-if __name__ == "__main__":
-    app = QApplication([])
-    window = DisplayDataApp()
-    window.show()
-    app.exec()
