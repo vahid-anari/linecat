@@ -1,5 +1,9 @@
 # linecat
 
+[![tests](https://github.com/vahid-anari/linecat/actions/workflows/tests.yml/badge.svg)](https://github.com/vahid-anari/linecat/actions/workflows/tests.yml)
+![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 **linecat** ("line catalog") is a desktop viewer for spectral line catalogs
 such as [CDMS](https://cdms.astro.uni-koeln.de/). It loads a catalog converted
 to CSV, filters the transitions by frequency range and by the quantum numbers of
@@ -9,6 +13,10 @@ and draws an interactive energy-level diagram of the selected transitions
 
 Supported species: OH, CH3OH, SiO, NH3. Adding a species means adding its
 quantum-number rules to `linecat/molecules.py`.
+
+<img src="https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/images/main_window.png" width="700" alt="linecat main window: quantum-number filters, frequency range and the table of OH lines">
+
+<img src="https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/images/diagram.png" width="700" alt="Energy-level diagram of the selected OH transitions with the transition table">
 
 ## Install (development)
 
@@ -46,6 +54,10 @@ CDMS Catalogs… in the app). The generated CSVs are not committed.
 ```
 pytest
 ```
+
+The window tests run offscreen with the small catalog in `tests/data/`.
+`python tools/screenshots.py` renders the two pictures above into
+`docs/images/` (it needs `catalogs/CDMS_OH.csv`).
 
 ## License
 

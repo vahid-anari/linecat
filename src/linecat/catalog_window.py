@@ -271,13 +271,12 @@ class CatalogWindow(QMainWindow):
             return {}
         return config if isinstance(config, dict) else {}
 
-    def check_molecule_info(self):
-        species = self.df['Species'].iloc[0]
-        if species not in REGISTRY.keys():
-            return False
-
-        self.molecule_info = REGISTRY[species]
-        return True
+    @staticmethod
+    def molecule_for(df):
+        """The registered molecule of a catalog (from its `Species` column), or None."""
+        if 'Species' not in df.columns or df.empty:
+            return None
+        return REGISTRY.get(df['Species'].iloc[0])
 
     def create_filter_page(self):
         """
@@ -420,12 +419,13 @@ class CatalogWindow(QMainWindow):
             show_warning("Failed", f"{Path(path).name} is empty.", parent=self)
             return
 
-        self.df = df
-        self.load = True
-        if not self.check_molecule_info():
-            self.df = None
+        info = self.molecule_for(df)
+        if info is None:
             show_warning("Failed", f"{Path(path).name}: unknown species or not a linecat catalog.", parent=self)
             return
+        self.df = df
+        self.molecule_info = info
+        self.load = True
         self.catalog_path = path
         self.settings.setValue('paths/open_dir', str(Path(path).parent))
         self.add_recent_catalog(path)
