@@ -46,12 +46,12 @@ def run_view(catalog: str | None) -> int:
     from PySide6.QtWidgets import QApplication
     from sciwidgets.style import apply_sci_style
 
-    from linecat.catalog_window import APP_STYLE_SHEET, DisplayDataApp
+    from linecat.catalog_window import APP_STYLE_SHEET, CatalogWindow
 
     app = QApplication(sys.argv)
     app.setApplicationName("linecat")
     apply_sci_style(app, APP_STYLE_SHEET)
-    window = DisplayDataApp(catalog)
+    window = CatalogWindow(catalog)
     window.show()
     return app.exec()
 

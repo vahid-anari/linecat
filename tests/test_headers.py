@@ -1,4 +1,4 @@
-from linecat.catalog_window import TABLE_FORMATS, filter_label, pretty_header, table_alignment, table_background
+from linecat.headers import TABLE_FORMATS, filter_label, pretty_header, table_alignment, table_background
 
 
 def test_pretty_header():

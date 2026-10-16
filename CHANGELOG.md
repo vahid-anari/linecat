@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Code split into modules (`catalog_window`, `filters`, `headers`, `widgets`, `diagram/`); classes renamed `CatalogWindow`, `DiagramWindow`, `DiagramTab`. No change for users.
+
 ## 0.2.0 — 2026-10-16
 
 - Menu bar (File, View, Transitions, Help) and status bar replace the buttons and labels: Open Catalog… (⌘O), Open Recent, Export Table as CSV… (⌘E), Convert CDMS Catalogs…, Choose Columns…, Reset Filters, Use LaTeX for Labels, Show Energy-Level Diagram (⌘D), About. The status bar shows the catalog path and "n of N lines".
