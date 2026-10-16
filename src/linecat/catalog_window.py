@@ -18,7 +18,7 @@ from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
 from linecat import __version__
-from linecat.cdms import convert_molecule_catalog
+from linecat.cdms import convert_molecule_catalog, species_in_folder
 from linecat.diagram import DiagramWindow
 from linecat.filters import FrequencyRange
 from linecat.headers import TABLE_FORMATS, filter_label, pretty_header, table_alignment, table_background
@@ -242,11 +242,15 @@ class CatalogWindow(QMainWindow):
         if not folder:
             return
         self.settings.setValue('paths/catalogs_dir', folder)
-        found = [code for code, info in REGISTRY.items()
-                 if all((Path(folder) / f).is_file() for f in info.input_files)]
+        found = species_in_folder(folder)
         if not found:
-            show_warning("Nothing to convert",
-                         "No registered species has all its .cat files in that folder.", parent=self)
+            show_warning(
+                "Nothing to convert",
+                f"No registered species ({', '.join(REGISTRY)}) has all its .cat files in that folder.",
+                "Choose the folder that holds the species folders (e.g. catalogs/) or one species folder "
+                "(e.g. catalogs/OH/).",
+                parent=self,
+            )
             return
         self.status.set_state(f"Converting {', '.join(found)}…")
         written = [convert_molecule_catalog(code, outdir=folder, catalogs_dir=folder) for code in found]

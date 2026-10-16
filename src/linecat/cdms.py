@@ -260,6 +260,21 @@ def _apply_quantum_names(df: pd.DataFrame, quantum_numbers: Iterable[str], drop_
     return df
 
 
+def find_cat_file(catalogs_dir: str | Path, file: str) -> Path | None:
+    """Locate a species' `.cat` file: `<dir>/<SPECIES>/<name>` or, when a species folder was given, `<dir>/<name>`."""
+    base = Path(catalogs_dir)
+    for candidate in (base / file, base / Path(file).name):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def species_in_folder(catalogs_dir: str | Path) -> list[str]:
+    """Registered species whose `.cat` files are all present under `catalogs_dir` (see `find_cat_file`)."""
+    return [code for code, info in REGISTRY.items()
+            if all(find_cat_file(catalogs_dir, f) is not None for f in info.input_files)]
+
+
 def convert_molecule_catalog(
     molecule_code: str, *, outdir: str | Path | None = None, catalogs_dir: str | Path | None = None
 ) -> Path:
@@ -288,7 +303,10 @@ def convert_molecule_catalog(
     # Process each input file
     df_tot = pd.DataFrame()
     for file in info.input_files:
-        df = _load_cdms_catalog(catalogs_path / file, get_columns_info(info.extra_spaces))
+        path = find_cat_file(catalogs_path, file)
+        if path is None:
+            raise FileNotFoundError(f"{info.species}: {file} not found under {catalogs_path}")
+        df = _load_cdms_catalog(path, get_columns_info(info.extra_spaces))
         df = _apply_quantum_names(df, info.quantum_numbers)
         df = df.progress_apply(lambda x: _process_transition_row(x, info), axis=1)
         df_tot = pd.concat([df_tot, df], ignore_index=True)
@@ -322,11 +340,8 @@ def convert_molecule_catalog(
 def convert_all(catalogs_dir: str | Path | None = None, outdir: str | Path | None = None) -> list[Path]:
     """Convert every registered species whose `.cat` files are present in `catalogs_dir`."""
     catalogs_path = Path(catalogs_dir) if catalogs_dir is not None else Path.cwd()
-    written = []
-    for code, info in REGISTRY.items():
-        if all((catalogs_path / f).is_file() for f in info.input_files):
-            written.append(convert_molecule_catalog(code, outdir=outdir, catalogs_dir=catalogs_dir))
-    return written
+    return [convert_molecule_catalog(code, outdir=outdir, catalogs_dir=catalogs_path)
+            for code in species_in_folder(catalogs_path)]
 
 
 if __name__ == "__main__":
