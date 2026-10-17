@@ -68,33 +68,12 @@ def run_convert(args: argparse.Namespace) -> int:
 SPLASH_SECONDS = 3.5  # the splash stays at least this long, so it can be seen
 
 
-PLACE = {"mac": "your Applications folder (also in Launchpad and Spotlight)",
-         "linux": "the applications menu",
-         "windows": "the Start menu"}
-
-
 def run_install_app(args: argparse.Namespace) -> int:
-    from linecat import launcher
+    from sciwidgets.app.launcher import install_app_command
 
-    system = launcher.current_system()
-    if args.remove:
-        removed = launcher.remove_app(system=system)
-        if not removed:
-            print("No launcher found; nothing removed.")
-        for path in removed:
-            print(f"Removed {path}")
-        return 0
-    try:
-        written = launcher.install_app(system=system)
-    except (OSError, ValueError) as exc:
-        print(f"Could not create the launcher: {exc}", file=sys.stderr)
-        return 1
-    print(f"Created {written[0]}")
-    print(f"{APP_DISPLAY_NAME} is now in {PLACE[system]}.")
-    print(f"It starts the linecat of this Python: {launcher.python_for_launcher(system)}")
-    if system == "mac":
-        print("Drag it to the Dock to keep it there. Run this command again if you move Python.")
-    return 0
+    from linecat.app_info import APP
+
+    return install_app_command(APP, remove=args.remove)
 
 
 def after_start(window) -> None:
@@ -105,9 +84,11 @@ def after_start(window) -> None:
 
 def refresh_launcher() -> None:
     """Rebuild an app launcher of this installation made by an older linecat (never raises)."""
-    from linecat.launcher import refresh_if_outdated
+    from sciwidgets.app.launcher import refresh_if_outdated
 
-    refresh_if_outdated()
+    from linecat.app_info import APP
+
+    refresh_if_outdated(APP)
 
 
 def run_view(catalog: str | None) -> int:
@@ -169,9 +150,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "install-app":
         return run_install_app(args)
     if args.command == "update":
-        from linecat.update import run_update
+        from sciwidgets.app.update import run_update
 
-        return run_update(args)
+        from linecat.app_info import APP
+
+        return run_update(APP, args)
     return run_view(getattr(args, "catalog", None))
 
 

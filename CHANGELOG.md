@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 — 2026-10-17
+
+- The launcher (`linecat install-app`) and the update check (`linecat update`, Help ▸ Check for Updates…) now come from sciwidgets 0.11 (`sciwidgets.app`), shared with Maxwell Bloch Studio; `launcher.py`, `update.py` and `update_ui.py` are gone. Nothing changes for users; installed launchers keep working.
+
 ## 0.11.0 — 2026-10-17
 
 - Diagram window: pinch on the trackpad zooms in and out around the point between the fingers (both directions together); ⌘ + mouse wheel does the same. Zooming this way switches Fit to Window off and the zoom sliders follow; a two-finger double tap switches Fit to Window on again. Limits as the sliders (10–300 % across, 10–600 % up).
