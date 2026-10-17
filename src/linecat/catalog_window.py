@@ -17,12 +17,13 @@ from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
 from linecat import __version__
-from linecat.builtin import builtin_csv, builtin_dir, ensure_builtin_catalogs
+from linecat.builtin import builtin_csv, builtin_dir, ensure_builtin_catalogs, general_docs
 from linecat.cdms import species_in_folder
 from linecat.convert_dialog import convert_with_progress
 from linecat.diagram import DiagramWindow
 from linecat.filters import FrequencyRange, QuantumFilters
 from linecat.headers import TABLE_FORMATS, pretty_header, table_alignment, table_background
+from linecat.molecule_box import MoleculeBox, open_file
 from linecat.molecules import REGISTRY, MoleculeInfo
 from linecat.widgets import APP_STYLE_SHEET, NATIVE_MENU_BAR, busy, latex_available
 
@@ -104,12 +105,15 @@ class CatalogWindow(QMainWindow):
 
         # Layout construction
         main_layout = QVBoxLayout()
+        # Molecule and Frequency Range keep their widths at the edges; the quantum-number filters take
+        # the rest, so the row spans the window for every species
         self.top_layout = top_layout = QHBoxLayout()
-        top_layout.addStretch(1)
-        top_layout.addWidget(self.filter_page)
-        top_layout.addSpacing(20)
-        top_layout.addWidget(self.freq_range.groupbox)
-        top_layout.addStretch(1)
+        self.molecule_box = MoleculeBox()
+        top_layout.addWidget(self.molecule_box, 0)
+        top_layout.addSpacing(12)
+        top_layout.addWidget(self.filter_page, 1)
+        top_layout.addSpacing(12)
+        top_layout.addWidget(self.freq_range.groupbox, 0)
         main_layout.addLayout(top_layout, 0)
         main_layout.addSpacing(3)
         main_layout.addWidget(self.table_view, 1)
@@ -159,6 +163,9 @@ class CatalogWindow(QMainWindow):
                 {"id": "show_diagram", "text": "Show Energy-Level Diagram", "shortcut": "Ctrl+D", "enabled": False},
             ],
             "Help": [
+                {"submenu": "CDMS Documentation",
+                 "items": [{"id": f"gdoc_{i}", "text": path.stem} for i, path in enumerate(general_docs())]},
+                {"id": "sep"},
                 {"id": "about", "text": "About linecat"},
             ],
         }
@@ -192,6 +199,11 @@ class CatalogWindow(QMainWindow):
             self.set_use_latex(checked)
         elif action_id == 'show_diagram':
             self.show_button()
+        elif action_id.startswith('gdoc_'):
+            docs = general_docs()
+            index = int(action_id.split('_')[1])
+            if index < len(docs):
+                open_file(docs[index])
         elif action_id == 'about':
             self.show_about()
 
@@ -222,6 +234,8 @@ class CatalogWindow(QMainWindow):
         self.settings.setValue('view/use_latex', self.use_latex)
         set_latex_enabled(self.use_latex)
         self.set_filter_keys()
+        if self.molecule_box.info is not None:
+            self.molecule_box.set_molecule(self.molecule_box.info, len(self.df))
         if self.ranged_df is not None:
             self.load = True
             self.update_filters()
@@ -268,7 +282,8 @@ class CatalogWindow(QMainWindow):
             '<a href="https://github.com/vahid-anari/linecat">github.com/vahid-anari/linecat</a></p>'
             '<p>Catalog data: <a href="https://cdms.astro.uni-koeln.de/">CDMS</a>, Universität zu Köln — '
             "please cite Müller et al. 2001, A&amp;A 370, L49; Müller et al. 2005, J. Mol. Struct. 742, 215; "
-            "Endres et al. 2016, J. Mol. Spectrosc. 327, 95.</p>",
+            "Endres et al. 2016, J. Mol. Spectrosc. 327, 95. The CDMS documentation pages included with "
+            "linecat are reproduced with credit to CDMS.</p>",
             parent=self,
         )
 
@@ -446,6 +461,7 @@ class CatalogWindow(QMainWindow):
             return
         self.df = df
         self.molecule_info = info
+        self.molecule_box.set_molecule(info, len(df))
         self.load = True
         self.catalog_path = path
         self.settings.setValue('paths/open_dir', str(Path(path).parent))

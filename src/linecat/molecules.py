@@ -23,6 +23,8 @@ Add a new species
 1) Implement `<name>_standardize(df, prefix)` (whole columns, no row loop) and `<name>_label(df, prefix)`.
 2) Construct a `MoleculeInfo(...)` with the species’ metadata and these functions.
 3) Register it under its code in `REGISTRY`.
+4) Put its `.cat` files, the CDMS documentation PDFs of its entries and a picture `<SPECIES>.svg`
+   in `linecat/data/molecules/<SPECIES>/` (the Molecule box finds the PDFs and the picture there).
 
 Notes
 -----

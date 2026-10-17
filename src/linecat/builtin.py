@@ -1,6 +1,7 @@
 """Built-in catalogs: the CDMS sources shipped with linecat, converted once into a per-user folder.
 
-The `.cat` files live in the package (`linecat/data/cdms/<SPECIES>/`). Their CSVs are written
+The `.cat` files live in the package (`linecat/data/molecules/<SPECIES>/`, next to the species'
+CDMS documentation PDFs and its picture). Their CSVs are written
 read-only to the user's application-data folder (on macOS
 `~/Library/Application Support/linecat/catalogs/`), next to a stamp file holding the linecat
 version that built them. `ensure_builtin_catalogs` rebuilds them when a CSV is missing or the
@@ -18,8 +19,27 @@ from linecat import __version__
 from linecat.cdms import ConversionResult, convert_molecule_catalog
 from linecat.molecules import REGISTRY
 
-SOURCES_DIR = Path(__file__).resolve().parent / "data" / "cdms"
+DATA_DIR = Path(__file__).resolve().parent / "data"
+SOURCES_DIR = DATA_DIR / "molecules"  # one folder per species: .cat files, documentation PDFs, <SPECIES>.svg
+DOCS_DIR = DATA_DIR / "docs"  # general CDMS documentation
 STAMP_NAME = ".linecat-version"
+
+
+def molecule_image(species: str) -> Path | None:
+    """The species' picture (`<SPECIES>.svg` in its folder), if there is one."""
+    path = SOURCES_DIR / species / f"{species}.svg"
+    return path if path.is_file() else None
+
+
+def molecule_docs(species: str) -> list[Path]:
+    """The CDMS documentation PDFs of the species' entries, sorted by name."""
+    folder = SOURCES_DIR / species
+    return sorted(folder.glob("*.pdf")) if folder.is_dir() else []
+
+
+def general_docs() -> list[Path]:
+    """The general CDMS documentation PDFs, sorted by name."""
+    return sorted(DOCS_DIR.glob("*.pdf")) if DOCS_DIR.is_dir() else []
 
 
 def builtin_dir() -> Path:

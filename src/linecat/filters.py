@@ -79,14 +79,20 @@ class QuantumFilters(QGroupBox):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(6)
         for col, key in enumerate(keys, start=1):
-            grid.addWidget(MathLabel(filter_label(key), font_size=18, fix_size=True), 0, col, Qt.AlignCenter)
-        for row, (title, prefix) in enumerate(STATES, start=1):
+            grid.addWidget(MathLabel(filter_label(key), font_size=18, fix_size=True), 1, col, Qt.AlignCenter)
+        for row, (title, prefix) in enumerate(STATES, start=2):
             grid.addWidget(QLabel(title), row, 0, Qt.AlignRight | Qt.AlignVCenter)
             for col, key in enumerate(keys, start=1):
                 combo = FilterCombo(self)
                 combo.valueChanged.connect(lambda _value: self.changed.emit())
                 grid.addWidget(combo, row, col, Qt.AlignCenter)
                 self.combos[prefix + key] = combo
+        # columns packed on the left; the box fills the row and the spare width stays empty on the right
+        grid.setColumnStretch(len(keys) + 1, 1)
+        # rows kept together and centred vertically (as in Frequency Range) when the row is taller
+        # (rows 0 and last are empty spacers that take the extra height)
+        grid.setRowStretch(0, 1)
+        grid.setRowStretch(len(STATES) + 2, 1)
 
 
 class FrequencyRange:

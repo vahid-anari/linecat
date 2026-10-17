@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 — 2026-10-16
+
+- Molecule box left of the filters: a picture of the molecule, its name, CDMS tag(s), partition function Q(300 K) and number of lines, and a Documentation button that opens the CDMS documentation of its entries (included, no internet needed).
+- Help → CDMS Documentation opens the general CDMS documents (included).
+- One folder per species inside linecat (`data/molecules/<SPECIES>/`: `.cat` files, documentation PDFs, picture); general documents in `data/docs/`.
+- README screenshots moved to `docs/figures/`; `tools/screenshots.py` removed (screenshots are taken by hand).
+
 ## 0.4.0 — 2026-10-16
 
 - Built-in catalogs: the CDMS files of OH, CH3OH, SiO and NH3 ship with linecat. On first start and after each update they are converted (about a second) to read-only CSVs in the application-data folder (macOS: `~/Library/Application Support/linecat/catalogs/`); a missing file is rebuilt.

@@ -14,9 +14,9 @@ and draws an interactive energy-level diagram of the selected transitions
 Supported species: OH, CH3OH, SiO, NH3. Adding a species means adding its
 quantum-number rules to `linecat/molecules.py`.
 
-<img src="https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/images/main_window.png" width="700" alt="linecat main window: quantum-number filters, frequency range and the table of OH lines">
+<img src="https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/figures/main_window.png" width="700" alt="linecat main window: quantum-number filters, frequency range and the table of OH lines">
 
-<img src="https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/images/diagram.png" width="700" alt="Energy-level diagram of the selected OH transitions with the transition table">
+<img src="https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/figures/diagram.png" width="700" alt="Energy-level diagram of the selected OH transitions with the transition table">
 
 ## Install (development)
 
@@ -46,8 +46,11 @@ level). Right-click a column header for colours, alignment, font and columns.
 
 ## Catalogs
 
-linecat ships the CDMS `.cat` files of OH, CH3OH, SiO and NH3
-(`src/linecat/data/cdms/`). On first start, and after every linecat update, it
+linecat ships, for OH, CH3OH, SiO and NH3, the CDMS `.cat` files, the CDMS
+documentation of each entry (PDF) and a picture of the molecule, one folder per
+species (`src/linecat/data/molecules/<SPECIES>/`); the main window shows them in
+its Molecule box, and Help → CDMS Documentation opens the general CDMS
+documents. On first start, and after every linecat update, it
 converts them to read-only CSV files in the application-data folder
 (macOS: `~/Library/Application Support/linecat/catalogs/`; File → Show
 Built-in Catalogs Folder). If a file goes missing it is rebuilt. Your own
@@ -57,7 +60,10 @@ CDMS Catalogs… or `linecat convert --catalogs DIR`.
 The catalog data come from the Cologne Database for Molecular Spectroscopy
 ([CDMS](https://cdms.astro.uni-koeln.de/)); please cite Müller et al. 2001,
 A&A 370, L49; Müller et al. 2005, J. Mol. Struct. 742, 215; and Endres et al.
-2016, J. Mol. Spectrosc. 327, 95.
+2016, J. Mol. Spectrosc. 327, 95. The catalog format and the SPCAT program are
+described by Pickett et al. 1998, J. Quant. Spectrosc. Radiat. Transfer 60, 883.
+The CDMS documentation pages included with linecat are reproduced with credit
+to CDMS.
 
 ## Tests
 
@@ -66,8 +72,8 @@ pytest
 ```
 
 The window tests run offscreen with the small catalog in `tests/data/`.
-`python tools/screenshots.py` renders the two pictures above into
-`docs/images/` (from the built-in OH catalog).
+The screenshots in `docs/figures/` are taken by hand on a Mac (⌘⇧4, Space,
+⌥-click for a window without shadow).
 
 ## License
 

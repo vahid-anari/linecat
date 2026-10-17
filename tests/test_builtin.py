@@ -48,3 +48,33 @@ def test_window_opens_builtin_catalog(window, builtin_folder):
     window.on_menu_action("File", "builtin_NH3", False)
     assert window.molecule_info.species == "NH3" and window.catalog_path == str(builtin_folder / "CDMS_NH3.csv")
     assert window.menu.action("builtin_OH").shortcut().toString() == "Ctrl+1"
+
+
+def test_molecule_resources_shipped():
+    from linecat.builtin import general_docs, molecule_docs, molecule_image
+
+    for code in REGISTRY:
+        assert molecule_image(code) is not None and molecule_image(code).suffix == ".svg"
+        assert molecule_docs(code), code
+    assert [p.stem for p in molecule_docs("OH")] == ["OH, v=0", "OH, v=1", "OH, v=2"]
+    assert len(general_docs()) >= 1
+
+
+def test_molecule_box(window, builtin_folder, monkeypatch):
+    import linecat.molecule_box as mb
+    from linecat.molecule_box import cdms_tags
+
+    assert cdms_tags(REGISTRY["OH"]) == ["017507", "017508", "017509"]
+    assert cdms_tags(REGISTRY["CH3OH"]) == ["032504"]
+    window.prepare_builtin_catalogs()
+    width = window.molecule_box.width()
+    window.on_menu_action("File", "builtin_OH", False)
+    box = window.molecule_box
+    assert box.info.species == "OH" and box.docs_button.isEnabled() and box.width() == width
+    assert "017507, 017508, 017509" in box.details.text() and "2,581 lines" in box.details.text()
+    opened = []
+    monkeypatch.setattr(mb, "open_file", lambda path: opened.append(path))
+    monkeypatch.setattr(mb.QDesktopServices, "openUrl", lambda url: opened.append(url))
+    box.docs_menu.actions()[0].trigger()
+    assert opened and "OH, v=0.pdf" in str(opened[0].toLocalFile() if hasattr(opened[0], "toLocalFile") else opened[0])
+    assert window.menu.action("gdoc_0") is not None
