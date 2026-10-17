@@ -18,12 +18,14 @@ quantum-number rules to `linecat/molecules.py`.
 
 <img src="https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/figures/diagram.png" width="700" alt="Energy-level diagram of the selected OH transitions with the transition table">
 
-## Install (development)
+## Installation
+
+linecat is not on PyPI yet; install it from a clone (Python 3.10 or newer):
 
 ```
 git clone https://github.com/vahid-anari/linecat.git
 cd linecat
-pip install -e ".[dev]"
+pip install -e .
 linecat
 ```
 
@@ -65,23 +67,44 @@ described by Pickett et al. 1998, J. Quant. Spectrosc. Radiat. Transfer 60, 883.
 The CDMS documentation pages included with linecat are reproduced with credit
 to CDMS.
 
-## User Guide
+## Documentation
 
-Help → User Guide opens the guide (PDF). Its sources are in `docs/`
-(`user_guide.tex`, with the equations in `equations.tex`); after a change,
-`sh tools/build_docs.sh` rebuilds it into `src/linecat/data/user_guide.pdf`
-(needs a TeX installation, e.g. MacTeX).
+Help → User Guide opens the User Guide (PDF): the windows, the energy-level
+diagram, converting catalogs, the command line, adding a species, and the
+equations behind the derived columns. What changed in each version is in
+[`CHANGELOG.md`](CHANGELOG.md).
 
-## Tests
+## Development
 
 ```
+pip install -e ".[dev]"
 pytest
 ```
 
 The window tests run offscreen with the small catalog in `tests/data/`.
+The User Guide sources are in `docs/` (`user_guide.tex`, with the equations in
+`equations.tex`); after a change, `sh tools/build_docs.sh` rebuilds it into
+`src/linecat/data/user_guide.pdf` (needs a TeX installation, e.g. MacTeX).
 The screenshots in `docs/figures/` are taken by hand on a Mac (⌘⇧4, Space,
-⌥-click for a window without shadow).
+⌥-click for a window without shadow). Pushing a tag `vX.Y.Z` publishes a
+GitHub Release with that version's section of `CHANGELOG.md`.
+
+## Citing
+
+If you use linecat in published work, please cite it; GitHub's **Cite this
+repository** button gives the reference (from `CITATION.cff`). Please also
+cite CDMS for the catalog data (see [Catalogs](#catalogs)).
 
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE).
+
+## Author
+
+Vahid Anari ·
+[GitHub](https://github.com/vahid-anari) ·
+[LinkedIn](https://www.linkedin.com/in/vahid-anari/)
+
+Related projects: [mbsolver](https://github.com/vahid-anari/mbsolver) ·
+[sciwidgets](https://github.com/vahid-anari/sciwidgets) ·
+[Maxwell Bloch Studio](https://github.com/vahid-anari/maxwell-bloch-studio)
