@@ -9,7 +9,7 @@ from matplotlib.patches import FancyArrowPatch
 from matplotlib.transforms import blended_transform_factory, offset_copy
 
 H_STEPS = {
-    'h-large': 2,
+    'h-large': 1.25,
     'h-small': 0.75,
 }
 
@@ -63,6 +63,96 @@ def fit_side_margins(fig, level_lines):
     params = fig.subplotpars
     if abs(params.left - lo) > 1e-4 or abs(params.right - hi) > 1e-4:
         fig.subplots_adjust(left=lo, right=hi)
+
+
+def short_number(n):
+    """Three significant figures without exponent: 4.56, 45.6, 456."""
+    if n < 10:
+        return f"{n:.2f}"
+    if n < 100:
+        return f"{n:.1f}"
+    return f"{n:.0f}"
+
+
+def frequency_parts(nu_mhz):
+    """``(value, prefix)`` of a frequency in MHz in kHz, MHz, GHz or THz: 22235.08 -> ("22.2", "G")."""
+    if nu_mhz < 1:
+        return short_number(nu_mhz * 1e3), "k"
+    if nu_mhz < 1e3:
+        return short_number(nu_mhz), "M"
+    if nu_mhz < 1e6:
+        return short_number(nu_mhz / 1e3), "G"
+    return short_number(nu_mhz / 1e6), "T"
+
+
+def lifetime_parts(tau):
+    """``(mantissa, exponent)`` of a lifetime in seconds: 3.888e8 -> ("3.89", 8)."""
+    mantissa, exponent = f"{tau:.2e}".split("e")
+    return mantissa, int(exponent)
+
+
+def hover_text(nu_mhz, tau):
+    """The two-line label shown next to the pointer over a transition."""
+    value, prefix = frequency_parts(nu_mhz)
+    mantissa, exponent = lifetime_parts(tau)
+    return (rf"$\nu = {value}\ \mathrm{{{prefix}Hz}}$" "\n"
+            rf"$\tau = {mantissa}\times 10^{{{exponent}}}\ \mathrm{{s}}$")
+
+
+# smallest readable spacing, as multiples of the text: levels one label height + 25 % apart,
+# neighbouring transition circles their own width + 15 % apart
+LEVEL_PITCH = 1.25
+COLUMN_PITCH = 1.15
+DEFAULT_SIZE = (12.0, 6.5)  # inches; small diagrams keep this size
+
+
+LEVEL_PAD = 0.6  # free space above the top and below the bottom level, in average level spacings
+
+
+def level_y_limits(ys):
+    """y limits of the level axes: the levels plus ``LEVEL_PAD`` average spacings at both ends."""
+    pad = LEVEL_PAD * max(ys[-1] - ys[0], 1e-9) / max(len(ys) - 1, 1)
+    return ys[0] - pad, ys[-1] + pad
+
+
+def size_to_content(fig, level_lines, arrows, n_levels, width_units):
+    """Make the figure big enough that level labels and transition circles never overlap.
+
+    The figure keeps ``DEFAULT_SIZE`` unless its content needs more: the height gives every level
+    one label height (+25 %), the width spreads apart only those circles that would touch at their
+    heights. ``fig.legible_fraction`` (width, height) is the smallest zoom at which it stays readable;
+    Fit to Window stops there and the diagram scrolls instead.
+    """
+    renderer = fig.canvas.get_renderer()
+    dpi = fig.dpi
+    labels = [t for line in level_lines[1:] for t in (line.lvl, line.energy)]
+    label_h = max((t.get_window_extent(renderer).height for t in labels), default=0) / dpi
+    left = max(line.lvl.get_window_extent(renderer).width for line in level_lines) / dpi
+    right = max(line.energy.get_window_extent(renderer).width for line in level_lines) / dpi
+    # height: levels 1 data unit apart; the line axes span (n - 1) + 2 LEVEL_PAD units and (n + 1)/(n + 2)
+    # of the plotting height (the header row takes the rest); top/bottom margins 0.05 together
+    span = max(n_levels - 1, 1) + 2 * LEVEL_PAD
+    share = 0.95 * (n_levels + 1) / (n_levels + 2)
+    need_h = label_h * LEVEL_PITCH * span / share
+    height = max(DEFAULT_SIZE[1], need_h)
+    # width: inches per x unit so that circles closer than their size in y are that far apart in x
+    font = 12 * tex_fontsize_factor() / 72
+    digits = len(str(max(len(arrows), 1)))
+    circle = (np.hypot(0.6 * digits * font, font) + 0.6 * font) * COLUMN_PITCH
+    y_scale = height * share / span  # inches per y unit
+    x_scale = 0.0
+    xs = np.array([a.x for a in arrows])
+    ys = np.array([a.y_mid for a in arrows]) * y_scale
+    for i in range(len(arrows) - 1):
+        dx = np.abs(xs[i + 1:] - xs[i])
+        near = (np.abs(ys[i + 1:] - ys[i]) < circle) & (dx > 0)
+        if near.any():
+            x_scale = max(x_scale, circle / dx[near].min())
+    gaps = 2 * (LABEL_GAP_PT + EDGE_PAD_PT) / 72 * 1.2
+    need_w = x_scale * width_units / 0.95 + (left + right) * 1.15 + gaps
+    width = max(DEFAULT_SIZE[0], need_w)
+    fig.set_size_inches(width, height)
+    fig.legible_fraction = (min(1.0, need_w / width), min(1.0, need_h / height))
 
 
 def eval_lvls_energy_diff(E_column):
@@ -162,7 +252,7 @@ class TransitionArrow:
         self.type = type_
         self.number = number
         self.color = TRANS_COLOR[type_]
-        self.label = self.make_label_text(nu, tau)
+        self.label = hover_text(nu, tau)
         self.arrow = FancyArrowPatch(
             (x, y_up), (x, y_down),
             arrowstyle='simple',
@@ -226,30 +316,5 @@ class TransitionArrow:
         self.arrow.set_positions((self.x, y_up), (self.x, y_down))
         self.number_text.set_position((self.x, self.y_mid))
 
-    def beauty_digits(self, n):
-        if n < 10:
-            return f"{n:.2f}"
-        elif n < 100:
-            return f"{n:.1f}"
-        else:
-            return f"{n:.0f}"
-
-    def freq_unit(self, nu):
-        if nu < 1:
-            nu *= 1000
-            return self.beauty_digits(nu), 'K'
-        elif nu < 1000:
-            return self.beauty_digits(nu), 'M'
-        else:
-            nu /= 1000
-            if nu < 1000:
-                return self.beauty_digits(nu), 'G'
-            else:
-                nu /= 1000
-                return self.beauty_digits(nu), 'T'
-
     def make_label_text(self, nu, tau):
-        freq, unit = self.freq_unit(nu)
-        tau = f"{tau:.2e}"
-        m, e = tau.split('e')
-        return fr"$\nu = {freq}\,\mathrm{{{unit}Hz}}\, , \tau = {m}\times 10^{{{int(e)}}} (s)$"
+        return hover_text(nu, tau)

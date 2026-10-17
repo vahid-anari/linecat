@@ -134,8 +134,10 @@ class DiagramTab:
         zoom_h, zoom_v = self.scroll.zoom()
         if avail_w < 50 or avail_h < 50 or canvas_w <= 0 or canvas_h <= 0:
             return
-        h = min(FIT_MAX, max(FIT_MIN, avail_w / (canvas_w / zoom_h)))
-        v = min(FIT_MAX, max(FIT_MIN, avail_h / (canvas_h / zoom_v)))
+        # never squeeze below the size at which labels and transition circles stay apart
+        min_h, min_v = getattr(self.scroll.figure, "legible_fraction", (FIT_MIN, FIT_MIN))
+        h = min(FIT_MAX, max(FIT_MIN, min_h, avail_w / (canvas_w / zoom_h)))
+        v = min(FIT_MAX, max(FIT_MIN, min_v, avail_h / (canvas_h / zoom_v)))
         h, v = int(h * 100) / 100, int(v * 100) / 100  # whole percents, rounded down so nothing overflows
         if (h, v) != (round(zoom_h, 2), round(zoom_v, 2)):
             self.get_comps_ref()['zoom factor'][:] = [h, v]

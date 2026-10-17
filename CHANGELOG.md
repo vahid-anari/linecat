@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0 — 2026-10-17
+
+- Diagrams are as large as their content needs: every level gets at least a line of text and transition circles never overlap; groups of transitions at different heights share a column, so a large selection grows downwards (NH3 with 70 lines: 12 in wide instead of 44). Fit to Window stops at that readable size and the diagram scrolls instead of squeezing the labels together. Less empty space above the top and below the bottom level.
+- The hover label shows ν and τ on two lines with units and opens towards the middle of the diagram (never off the edge).
+- Tab titles: the first tab names the selection ("NH₃ · 18.4–22.2 GHz · 70 lines"); a tab opened from an arrow reads "From (6, 1) 6−". The first tab is recognised by its place, not its title.
+- View ▸ Large Diagram Warning…: ask before drawing more than N transitions (default 50, 10–1000) or never; the question says where to change it.
+- LaTeX Commands: monospaced, Copy says "Copied", Save… writes a `.tex` file; a header comment names the selection. Fixed: frequencies below 1 MHz were written with "K" instead of "k"; one function formats frequencies and lifetimes for the hover label and the export.
+
 ## 0.9.0 — 2026-10-17
 
 - linecat is on PyPI: `pipx install linecat` (or `pip install linecat`).

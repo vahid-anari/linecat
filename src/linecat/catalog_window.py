@@ -21,6 +21,7 @@ from linecat.builtin import builtin_csv, builtin_dir, ensure_builtin_catalogs, g
 from linecat.cdms import species_in_folder
 from linecat.convert_dialog import convert_with_progress
 from linecat.diagram import DiagramWindow
+from linecat.dialogs import LARGE_DEFAULT, LargeDiagramDialog, large_diagram_limit
 from linecat.filters import FrequencyRange, QuantumFilters
 from linecat.headers import TABLE_FORMATS, pretty_header, table_alignment, table_background
 from linecat.molecule_box import MoleculeBox, open_file
@@ -29,7 +30,7 @@ from linecat.widgets import APP_STYLE_SHEET, NATIVE_MENU_BAR, busy, latex_availa
 
 __all__ = ["APP_STYLE_SHEET", "CatalogWindow", "latex_available"]
 
-MAX_PLOT_TRANSITIONS = 50  # above this the diagram asks before drawing
+MAX_PLOT_TRANSITIONS = LARGE_DEFAULT  # default limit; View ▸ Large Diagram Warning… changes it
 
 
 MAX_RECENT = 5
@@ -160,6 +161,7 @@ class CatalogWindow(QMainWindow):
                 {"id": "sep"},
                 {"id": "use_latex", "text": "Use LaTeX for Labels", "checkable": True, "checked": self.use_latex,
                  "enabled": self.latex_available},
+                {"id": "large_limit", "text": "Large Diagram Warning…"},
             ],
             "Transitions": [
                 {"id": "show_diagram", "text": "Show Energy-Level Diagram", "shortcut": "Ctrl+D", "enabled": False},
@@ -199,6 +201,8 @@ class CatalogWindow(QMainWindow):
             self.open_select_columns_dialog()
         elif action_id == 'reset_filters':
             self.reset_filters()
+        elif action_id == 'large_limit':
+            LargeDiagramDialog(self.settings, parent=self).exec()
         elif action_id == 'use_latex':
             self.set_use_latex(checked)
         elif action_id == 'show_diagram':
@@ -586,18 +590,19 @@ class CatalogWindow(QMainWindow):
         """
             Show the DiagramWindow if the number of filtered transitions is acceptable.
 
-            Asks before drawing when there are more than MAX_PLOT_TRANSITIONS transitions,
-            asking the user whether to continue.
+            Asks first when there are more transitions than the limit set under View ▸ Large Diagram Warning….
             """
+        limit = large_diagram_limit(self.settings)
         if self.filtered_df is None or self.filtered_df.empty:
             show_warning("No Transition", "There are no transitions. Nothing to display.", parent=self)
-        elif len(self.filtered_df) <= MAX_PLOT_TRANSITIONS:
+        elif limit is None or len(self.filtered_df) <= limit:
             self.open_diagram()
         else:
             reply = ask_question(
                 "Large Number of Transitions",
-                f"You are trying to plot more than {MAX_PLOT_TRANSITIONS} transitions.",
-                "This may slow down the rendering. Do you want to continue?",
+                f"You are about to draw {len(self.filtered_df):,} transitions (more than {limit}).",
+                "This may take a while. Do you want to continue?\n\n"
+                "You can change this limit under View ▸ Large Diagram Warning….",
                 yes_btn_label="Continue",
                 parent=self,
             )

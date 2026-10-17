@@ -291,7 +291,7 @@ def test_new_tab_fits_and_keeps_old_tab(window, qapp):
 
 def test_secondary_view_fits_too(window, qapp):
     pw = _open_diagram(window)
-    pw.resize(1100, 800)
+    pw.resize(1800, 1000)  # the secondary diagram is wider than the readable minimum of a small window
     _settle(qapp)
     pw.on_view_toggled("secondary", True)
     _settle(qapp)

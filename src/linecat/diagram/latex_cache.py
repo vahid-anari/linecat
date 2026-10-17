@@ -21,12 +21,13 @@ from PySide6.QtWidgets import QProgressDialog
 
 def latex_jobs(figures, extra=()):
     """The distinct (text, font size) pairs that LaTeX will render for ``figures``, plus ``extra``."""
-    jobs = set(extra)
+    pairs = list(extra)
     for fig in figures:
         for text in fig.findobj(Text):
-            if text.get_usetex() and text.get_text().strip():
-                jobs.add((text.get_text(), float(text.get_fontsize())))
-    return sorted(jobs)
+            if text.get_usetex():
+                pairs.append((text.get_text(), float(text.get_fontsize())))
+    # Matplotlib renders a multi-line text one line at a time
+    return sorted({(line, size) for text, size in pairs for line in text.split("\n") if line.strip()})
 
 
 def _uses_dvipng():

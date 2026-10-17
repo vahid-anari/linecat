@@ -11,17 +11,17 @@ import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.transforms import offset_copy
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QGuiApplication, QKeySequence
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QFileDialog, QGroupBox, QHBoxLayout, QMainWindow, QPushButton, QTabWidget, QTextEdit,
-    QVBoxLayout, QWidget,
+    QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QMainWindow, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from sciwidgets.dialogs import show_information, show_warning
 from sciwidgets.window import MenuBarController, center_on_screen
 
 from linecat.diagram.elements import (
-    BBOX_STYLES, H_STEPS, LevelLine, TransitionArrow, assign_lvls_y_positions, fit_side_margins, tex_fontsize_factor,
+    BBOX_STYLES, H_STEPS, LevelLine, TransitionArrow, assign_lvls_y_positions, fit_side_margins, frequency_parts,
+    level_y_limits, lifetime_parts, size_to_content, tex_fontsize_factor,
 )
 from linecat.diagram.latex_cache import prerender_latex
 from linecat.diagram.tab import DiagramTab
@@ -33,6 +33,32 @@ from linecat.widgets import GROUPBOX_MARGIN, NATIVE_MENU_BAR, align_widgets, bus
 
 
 HOVER_FONT_SIZE = 16
+GROUP_GAP_LEVELS = 1.0  # groups of transitions share a column only if this many levels apart in height
+HOVER_OFFSET_PX = (24, 18)  # the hover label sits this far right of and above the pointer (flipped near edges)
+
+SUBSCRIPT_DIGITS = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+
+
+def plain_level(level):
+    """A level label without LaTeX, for tab titles: ``$(6,\\,1)\\,6^-$`` -> ``(6, 1) 6−``."""
+    text = re.sub(r"\\[,;: ]|~", " ", level)
+    text = re.sub(r"\\(mathrm|text|mathbf)\{([^}]*)\}", r"\2", text)
+    text = re.sub(r"[\$\\{}]", "", text)
+    text = text.replace("^", "").replace("_", "").replace("-", "−")
+    text = re.sub(r"\s*,\s*", ", ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def frequency_range_text(nu_mhz):
+    """``"20.9–22.2 GHz"`` for a series of frequencies in MHz (one unit, chosen by the largest)."""
+    lo, hi = float(nu_mhz.min()), float(nu_mhz.max())
+    _, prefix = frequency_parts(hi)
+    scale = {"k": 1e-3, "M": 1.0, "G": 1e3, "T": 1e6}[prefix]
+    lo_text, _ = frequency_parts(lo) if frequency_parts(lo)[1] == prefix else (f"{lo / scale:.3g}", prefix)
+    hi_text, _ = frequency_parts(hi)
+    if lo_text == hi_text:
+        return f"{hi_text} {prefix}Hz"
+    return f"{lo_text}–{hi_text} {prefix}Hz"
 
 
 class DiagramWindow(QMainWindow):
@@ -53,9 +79,18 @@ class DiagramWindow(QMainWindow):
         self.tabs.currentChanged.connect(self.refresh_tab)
         # Layout setup
         self.build_layout()
-        self.build_new_tab(self.build_compatible_df(filtered_df), "Primary Transitions")
+        first = self.build_compatible_df(filtered_df)
+        self.build_new_tab(first, self.primary_title(first))
         self.show()
         center_on_screen(self, (1500, 1000), fallback=(1400, 900))
+
+    def primary_title(self, trs_df):
+        """Title of the first tab: molecule, frequency range and number of lines."""
+        if trs_df.empty:
+            return "Primary Transitions"
+        name = self.molecule_info.species.translate(SUBSCRIPT_DIGITS)
+        lines = f"{len(trs_df)} line" + ("s" if len(trs_df) != 1 else "")
+        return f"{name} · {frequency_range_text(trs_df['nu'])} · {lines}"
 
     def build_layout(self):
         central_widget = QWidget()
@@ -163,10 +198,7 @@ class DiagramWindow(QMainWindow):
         for i, y in enumerate(ys):
             lvl = lvls[i]
             lvl.set_y(y)
-        HEIGHT = ys[-1] - ys[0]
-        Y_MIN = ys[0] - 0.05 * HEIGHT
-        Y_MAX = ys[-1] + 0.05 * HEIGHT
-        ax.set_ylim(Y_MIN, Y_MAX)
+        ax.set_ylim(*level_y_limits(ys))
         for arrow in arrows:
             arrow.set_y(ys)
         fig.canvas.draw_idle()
@@ -226,43 +258,17 @@ class DiagramWindow(QMainWindow):
         tab_content.use_latex_checkbox = False
 
     def latex_format(self):
+        """File ▸ LaTeX Commands…: the diagram of the current tab as \\DrawLevel/\\DrawTr commands."""
+        from linecat import __version__
+        from linecat.dialogs import LatexCommandsDialog
+
         idx = self.tabs.currentIndex()
-        tab_content = self.tabs_content[idx]
-        comps = tab_content.get_comps()
-        text = comps['latex text']
-
-        # build a simple dialog
-        dlg = QDialog(self)
-        dlg.setWindowTitle("LaTeX Commands")
-        dlg.resize(600, 400)
-
-        main_layout = QVBoxLayout(dlg)
-
-        # read-only text area
-        te = QTextEdit()
-        te.setReadOnly(True)
-        te.setPlainText(text)
-        main_layout.addWidget(te)
-
-        # button row
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-
-        copy_btn = QPushButton("Copy")
-        btn_row.addWidget(copy_btn)
-
-        btn_row.addSpacing(10)
-
-        close_btn = QPushButton("Close")
-        btn_row.addWidget(close_btn)
-
-        main_layout.addLayout(btn_row)
-
-        # connections
-        copy_btn.clicked.connect(lambda: QGuiApplication.clipboard().setText(text))
-        close_btn.clicked.connect(dlg.reject)
-
-        dlg.exec()
+        title = self.tabs.tabText(idx)
+        header = (f"% {title} -- made by linecat {__version__} (Line Catalog Explorer)\n"
+                  "% Needs the \\DrawLevel and \\DrawTr definitions of your diagram template.\n\n")
+        name = re.sub(r"[^\w.-]+", "_", f"{self.molecule_info.species}_diagram").strip("_") + ".tex"
+        LatexCommandsDialog(header + self.tabs_content[idx].get_comps()['latex text'], self.settings,
+                            default_name=name, parent=self).exec()
         self.reactivate()
 
     def reactivate(self):
@@ -271,9 +277,9 @@ class DiagramWindow(QMainWindow):
         self.activateWindow()
 
     def close_tab(self, idx):
-        tab_title = self.tabs.tabText(idx)
-        if tab_title == "Primary Transitions":
-            show_information("Not Allowed", "You cannot close the Primary Transitions tab.", parent=self)
+        if idx == 0:
+            show_information("Not Allowed", "The first tab shows the selected transitions and stays open.",
+                             parent=self)
             self.reactivate()
             return
         tab = self.tabs.widget(idx)
@@ -477,6 +483,7 @@ class DiagramWindow(QMainWindow):
             if use_latex:
                 # run LaTeX for every label (and the hover texts) in the background before the first draw
                 prerender_latex(self, [fig], extra=[(arrow.label, hover_size) for arrow in arrows])
+            size_to_content(fig, fig.level_lines, *fig.diagram_counts)  # big diagrams get a bigger figure
             fit_side_margins(fig, fig.level_lines)
         fig.canvas.mpl_connect('resize_event', lambda _event, fig=fig: fit_side_margins(fig, fig.level_lines))
         return result
@@ -490,9 +497,7 @@ class DiagramWindow(QMainWindow):
         N_LVLs = len(lvls_df)
         ys = assign_lvls_y_positions(lvls_df)
         lvls_df['y'] = ys
-        HEIGHT = ys[-1] - ys[0]
-        Y_MIN = ys[0] - 0.05 * HEIGHT
-        Y_MAX = ys[-1] + 0.05 * HEIGHT
+        Y_MIN, Y_MAX = level_y_limits(ys)
 
         def draw_level_line(ax, level_label, energy_label, w=0, y=0, header=False, molecule_name=""):
             return LevelLine(ax, level_label, energy_label, w=w, y=y, header=header, molecule_name=molecule_name)
@@ -531,37 +536,14 @@ class DiagramWindow(QMainWindow):
                 return re.sub(r'[\${}(), \\]', '', lvl)
 
         def transition_text(tr, x):
-            def beauty_digits(n):
-                if n < 10:
-                    return f"{n:.2f}"
-                elif n < 100:
-                    return f"{n:.1f}"
-                else:
-                    return f"{n:.0f}"
-
-            def freq_unit(nu):
-                if nu < 1:
-                    nu *= 1000
-                    return beauty_digits(nu), 'K'
-                elif nu < 1000:
-                    return beauty_digits(nu), 'M'
-                else:
-                    nu /= 1000
-                    if nu < 1000:
-                        return beauty_digits(nu), 'G'
-                    else:
-                        nu /= 1000
-                        return beauty_digits(nu), 'T'
-
-            freq, unit = freq_unit(tr['nu'])
-            tau = f"{tr['tau']:.2e}"
-            m, e = tau.split('e')
+            freq, unit = frequency_parts(tr['nu'])
+            m, e = lifetime_parts(tr['tau'])
             # \DrawTr{<i>}{<f>}{<ν,G>}{<τman,τexp>}{<Δx_i,Δx_f>}{<loc>}{<pos>}{<dx,dy>}
             return (rf"\DrawTr"
                     fr"{{l_{convert_level_for_latex(tr['upper lvl'], False)}}}"
                     fr"{{l_{convert_level_for_latex(tr['lower lvl'], False)}}}"
                     fr"{{{freq},{unit}}}"
-                    fr"{{{m},{int(e)}}}"
+                    fr"{{{m},{e}}}"
                     f"{{{x},{x}}}"
                     "{right}{0.5}{0,0}\n"
                     )
@@ -570,7 +552,7 @@ class DiagramWindow(QMainWindow):
             # \DrawLevel{<x,y>}{<J,Ka,Kc,parity,vt>}{<E>}
             return (rf"\DrawLevel{{0,{lvl.y}}}"
                     f"{{{convert_level_for_latex(lvl.level)}}}"
-                    f"{{{level.E:0.5f}}}\n"
+                    f"{{{lvl.E:0.5f}}}\n"
                     )
 
         def make_final_text():
@@ -583,6 +565,20 @@ class DiagramWindow(QMainWindow):
                     )
 
         highlighted = []
+
+        def place_hover_label(event, x, y, text):
+            """Show ν and τ beside the pointer, on the side towards the middle of the diagram."""
+            box = ax_line.bbox
+            flip_x = event.x > (box.x0 + box.x1) / 2
+            flip_y = event.y > (box.y0 + box.y1) / 2
+            dx, dy = HOVER_OFFSET_PX
+            nu_tau_label.set_text(text)
+            nu_tau_label.set_position((x, y))
+            nu_tau_label.set_ha("right" if flip_x else "left")
+            nu_tau_label.set_va("top" if flip_y else "bottom")
+            nu_tau_label.set_transform(offset_copy(ax_line.transData, fig=fig, x=-dx if flip_x else dx,
+                                                   y=-dy if flip_y else dy, units='dots'))
+            nu_tau_label.set_visible(True)
 
         def look_for_arrow(y):
             for arrow in tr_arrows:
@@ -605,9 +601,7 @@ class DiagramWindow(QMainWindow):
                 x, y = event.xdata, event.ydata
                 for arrow in tr_arrows:
                     if arrow.contain(x, y):
-                        nu_tau_label.set_text(arrow.label)
-                        nu_tau_label.set_position((x, y))
-                        nu_tau_label.set_visible(True)
+                        place_hover_label(event, x, y, arrow.label)
                         arrow.selected(True)
                         highlighted.append((arrow.type, arrow.number))
                         idx_up, idx_down = arrow.lvl_idx
@@ -646,10 +640,8 @@ class DiagramWindow(QMainWindow):
                 x, y = event.xdata, event.ydata
                 for arrow in tr_arrows:
                     if arrow.contain(x, y):
-                        title = convert_level_for_latex(arrow.lower_lvl)
-                        title = re.sub(r',', ', ', title)
                         new_trs_df = self.df[self.df['upper lvl'] == arrow.lower_lvl].copy()
-                        self.build_new_tab(new_trs_df, f'({title})')
+                        self.build_new_tab(new_trs_df, f"From {plain_level(arrow.lower_lvl)}")
 
         # Make a figure
         fig, [ax_header, ax_line] = make_fig()
@@ -658,18 +650,31 @@ class DiagramWindow(QMainWindow):
         table_df = new_table_frame()
         selection = TransitionSelection()
 
+        # Place the groups of transitions (those ending on one lower level, plus the secondary ones leaving
+        # it) from left to right; a group moves left past every placed group it does not overlap in height
+        y_of = dict(zip(lvls_df['level'], lvls_df['y']))
+        groups = []
+        for lower_lvl in pri_trs_df['lower lvl'].unique().tolist():
+            trs_to_lvl = pri_trs_df[pri_trs_df['lower lvl'] == lower_lvl]
+            m, trs_from_lvl = check_sec_trs(lower_lvl)
+            top = max(y_of[u] for u in trs_to_lvl['upper lvl'])
+            bottom = min([y_of[lower_lvl], *(y_of[lo] for lo in trs_from_lvl.get('lower lvl', []))])
+            groups.append((trs_to_lvl, trs_from_lvl, m, top, bottom))
+        placed = []  # (x0, x1, bottom, top)
+        for trs_to_lvl, trs_from_lvl, m, top, bottom in groups:
+            width = (max(len(trs_to_lvl), m) - 1) * H_STEPS['h-small']
+            x0 = H_STEPS['h-large']
+            for p_x0, p_x1, p_bottom, p_top in placed:
+                if bottom < p_top + GROUP_GAP_LEVELS and top > p_bottom - GROUP_GAP_LEVELS:
+                    x0 = max(x0, p_x1 + H_STEPS['h-large'])
+            placed.append((x0, x0 + width, bottom, top))
+
         # Draw transition arrows
         pri_tr_number = 1
         sec_tr_number = 1
-        x_tr = 0
-        for lower_lvl in pri_trs_df['lower lvl'].unique().tolist():
-            x_tr += H_STEPS['h-large']
-            trs_to_lvl = pri_trs_df[pri_trs_df['lower lvl'] == lower_lvl]
-            n = len(trs_to_lvl)
-            m, trs_from_lvl = check_sec_trs(lower_lvl)
-            delta_x = (max(n, m) - 1) * H_STEPS['h-small']
-            x_tr += delta_x / 2.
-            x = x_tr - (n - 1) / 2. * H_STEPS['h-small']
+        for (trs_to_lvl, trs_from_lvl, m, _top, _bottom), (x0, x1, _b, _t) in zip(groups, placed):
+            centre = (x0 + x1) / 2.
+            x = centre - (len(trs_to_lvl) - 1) / 2. * H_STEPS['h-small']
             # Primary transitions
             for _, tr in trs_to_lvl.iterrows():
                 pri_trs_text += transition_text(tr, x)
@@ -678,7 +683,7 @@ class DiagramWindow(QMainWindow):
                 pri_tr_number += 1
                 x += H_STEPS['h-small']
 
-            x = x_tr - (m - 1) / 2. * H_STEPS['h-small']
+            x = centre - (m - 1) / 2. * H_STEPS['h-small']
             # Secondary transitions
             for _, tr in trs_from_lvl.iterrows():
                 sec_trs_text += transition_text(tr, x)
@@ -686,8 +691,7 @@ class DiagramWindow(QMainWindow):
                 add_row(table_df, 'sec', sec_tr_number, tr)
                 sec_tr_number += 1
                 x += H_STEPS['h-small']
-
-            x_tr += delta_x / 2.
+        x_tr = max((x1 for _x0, x1, _b, _t in placed), default=0)
 
         table_df = finish_frame(table_df)
 
@@ -700,10 +704,13 @@ class DiagramWindow(QMainWindow):
             lvl = draw_level_line(ax_line, level.level, f'${level["E"]:0.4f}$', WIDTH, level.y)
             lvls.append(lvl)
         fig.level_lines = [header, *lvls]  # their labels set the side margins (fit_side_margins)
+        fig.diagram_counts = (tr_arrows, N_LVLs, WIDTH)  # for size_to_content
         # Hover label
         nu_tau_label = ax_line.text(0, 0, '', ha="left", va="bottom", fontsize=HOVER_FONT_SIZE * tex_fontsize_factor(),
                                     color="k", zorder=3,
-                                    transform=offset_copy(ax_line.transData, fig=fig, x=50, y=30, units='dots'),
+                                    linespacing=1.4, multialignment="left",
+                                    transform=offset_copy(ax_line.transData, fig=fig, x=HOVER_OFFSET_PX[0],
+                                                          y=HOVER_OFFSET_PX[1], units='dots'),
                                     bbox=BBOX_STYLES['nu_tau_label'])
         fig.canvas.mpl_connect("motion_notify_event", on_move)
         fig.canvas.mpl_connect("button_press_event", on_press)

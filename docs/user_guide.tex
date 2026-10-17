@@ -147,7 +147,8 @@ order.
 
 \menu{Transitions\then Show Energy-Level Diagram} (\key{Cmd+D}) draws the lines shown in the table
 as a diagram of their energy levels and transitions. Above 50 transitions \AppName{} asks before
-drawing, since large diagrams become crowded and slow.
+drawing, since large diagrams take longer to draw; \menu{View\then Large Diagram Warning\dots} in the
+main window changes the number or switches the question off.
 
 \begin{figure}[h]
   \centering
@@ -162,20 +163,26 @@ Each level is a horizontal line, labelled with its quantum numbers on the left a
 The table on the left lists the same transitions with their frequency $\nu$, lifetime $\tau$ and
 transition dipole moment $d_{ij}$; rows are coloured by type.
 
+The diagram is as large as its content needs: every level gets at least one line of text, and
+transitions that would touch are moved apart. Groups of transitions that lie at different heights share
+a column, so a large selection grows downwards rather than sideways.
+
 Hovering over an arrow highlights it, its two levels and its row in the table, and shows $\nu$
-and $\tau$ next to the pointer; hovering over a level highlights the transitions that start or
+and $\tau$ next to the pointer, on the side towards the middle of the diagram; hovering over a level highlights the transitions that start or
 end on it. The other way round, selecting rows in the table highlights their arrows.
 
 \subsection{Tabs and secondary transitions}
-Double-click an arrow to open a new tab with all transitions that start from its lower level.
+The first tab is named after the selection, e.g.\ \emph{NH$_3$ $\cdot$ 18.4--22.2 GHz $\cdot$ 70 lines}.
+Double-click an arrow to open a new tab, \emph{From \textrm{(level)}}, with all transitions that start
+from its lower level.
 \menu{View\then Secondary Transitions} adds to the current tab the transitions that leave the
-lower levels of the primary ones (drawn in blue). Each tab keeps its own settings; the first tab,
-\emph{Primary Transitions}, cannot be closed.
+lower levels of the primary ones (drawn in blue). Each tab keeps its own settings; the first tab cannot be closed.
 
 \subsection{Zoom and real scale}
 \menu{Fit to window} (check box under the zoom sliders, or \menu{View\then Fit to Window},
 \key{Cmd+0}) scales the diagram to the space beside the table and follows the window when it is
-resized. Switch it off to set the \emph{Horizontal} and \emph{Vertical} zoom by hand.
+resized, but never below the size at which the labels stay apart: a larger diagram scrolls instead.
+Switch it off to set the \emph{Horizontal} and \emph{Vertical} zoom by hand.
 
 By default the levels are evenly spaced, in order of energy. The \emph{Real Scale} sliders move
 them towards their true energies: \emph{Coarse} (0--95\,\%) and \emph{Fine} (0--5\,\%) add up to
@@ -190,8 +197,9 @@ same for the filter labels.
 \subsection{Saving}
 \menu{File\then Save Figure as PDF\dots} (\key{Cmd+S}) writes a two-page PDF: the diagram, then the
 transition table. \menu{File\then LaTeX Commands\dots} shows the diagram as \LaTeX{} commands
-(\verb|\DrawLevel| and \verb|\DrawTr|) to paste into your own document; \menu{Copy} puts them on
-the clipboard.
+(\verb|\DrawLevel| and \verb|\DrawTr|, which need the definitions of your diagram template) to paste
+into your own document; \menu{Copy} puts them on the clipboard and \menu{Save\dots} writes a
+\texttt{.tex} file.
 
 % ── 4 ─────────────────────────────────────────────────────────────────────────
 \section{Converting CDMS catalogs}\label{sec:convert}
