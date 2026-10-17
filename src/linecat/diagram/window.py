@@ -356,6 +356,15 @@ class DiagramWindow(QMainWindow):
         self.hori_zoom_slider.setEnabled(not fit)
         self.vert_zoom_slider.setEnabled(not fit)
 
+    def on_tab_zoomed(self, tab_content, h, v):
+        """A pinch zoomed the tab: Fit to Window is off and the sliders show the new zoom (without re-centring)."""
+        if self.tabs_content and self.tabs_content[self.tabs.currentIndex()] is tab_content:
+            self.show_fit_state(False)
+            for slider, value in ((self.hori_zoom_slider, h), (self.vert_zoom_slider, v)):
+                slider.blockSignals(True)
+                slider.set_value(round(value * 100))
+                slider.blockSignals(False)
+
     def on_tab_fitted(self, tab_content, h, v):
         """Show the zoom a fitting tab chose, if it is the tab on show."""
         if self.tabs_content and self.tabs_content[self.tabs.currentIndex()] is tab_content:
@@ -481,6 +490,8 @@ class DiagramWindow(QMainWindow):
             self.reset_sliders()
             tab_content = self.build_pri_comps(trs_df)
             tab_content.on_fitted = self.on_tab_fitted  # the tab refits whenever its diagram area is resized
+            tab_content.on_zoomed = self.on_tab_zoomed  # pinch or ⌘ + wheel
+            tab_content.on_fit_requested = lambda _tab: self.set_fit(True)  # two-finger double tap
             self.tabs_content.append(tab_content)
             idx = self.tabs.addTab(tab_content.widget, title)
             self.tabs.setCurrentIndex(idx)

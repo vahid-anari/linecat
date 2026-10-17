@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from sciwidgets.plot import ScrollableFigure
@@ -11,6 +11,10 @@ from linecat.diagram.table import TransitionTable
 
 # zoom limits while fitting: below 50 % the labels get too small, so the diagram scrolls instead
 FIT_MIN, FIT_MAX = 0.5, 3.0
+# limits of the zoom sliders, also for pinching (horizontal, vertical)
+ZOOM_MIN = (0.1, 0.1)
+ZOOM_MAX = (3.0, 6.0)
+WHEEL_ZOOM_STEP = 1.0015  # ⌘ + mouse wheel: zoom factor per wheel unit (one notch = 120 units ≈ 20 %)
 
 
 class _ResizeWatcher(QObject):
@@ -23,6 +27,36 @@ class _ResizeWatcher(QObject):
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Resize:
             self._callback()
+        return False
+
+
+class _ZoomGestures(QObject):
+    """Trackpad pinch and ⌘ + wheel zoom the diagram; a two-finger double tap fits it to the window."""
+
+    def __init__(self, tab):
+        super().__init__()
+        self._tab = tab
+
+    def eventFilter(self, obj, event):
+        kind = event.type()
+        if kind == QEvent.NativeGesture:
+            gesture = event.gestureType()
+            if gesture == Qt.ZoomNativeGesture:
+                self._tab.zoom_by(1.0 + event.value(), obj.mapTo(self._tab.scroll.viewport(),
+                                                                 event.position().toPoint()))
+                event.accept()  # else Qt passes the gesture on to the parent (the viewport) as well
+                return True
+            if gesture == Qt.SmartZoomNativeGesture:
+                self._tab.request_fit()
+                event.accept()
+                return True
+        elif kind == QEvent.Wheel and event.modifiers() & Qt.ControlModifier:  # ⌘ on macOS
+            steps = event.angleDelta().y() or event.angleDelta().x()
+            if steps:
+                self._tab.zoom_by(WHEEL_ZOOM_STEP ** steps, obj.mapTo(self._tab.scroll.viewport(),
+                                                                      event.position().toPoint()))
+            event.accept()
+            return True
         return False
 
 
@@ -69,6 +103,11 @@ class DiagramTab:
         self.on_fitted = None
         self._watcher = _ResizeWatcher(self.apply_fit)
         self.scroll.viewport().installEventFilter(self._watcher)
+        # pinch / ⌘ + wheel zoom; on_zoomed(tab, h, v) reports it, on_fit_requested(tab) asks for Fit to Window
+        self.on_zoomed = None
+        self.on_fit_requested = None
+        self._gestures = _ZoomGestures(self)
+        self._watch_gestures(self.scroll)
 
     def comps_dict_name(self):
         if self.sec_trs_checkbox:
@@ -123,6 +162,40 @@ class DiagramTab:
         }
         self.comps_exist[dict_name] = 1
         self.comps_dict[dict_name]['scroll'].viewport().installEventFilter(self._watcher)
+        self._watch_gestures(self.comps_dict[dict_name]['scroll'])
+
+    def _watch_gestures(self, scroll):
+        scroll.canvas.installEventFilter(self._gestures)
+        scroll.viewport().installEventFilter(self._gestures)
+
+    def zoom_by(self, factor, anchor=None):
+        """Zoom both directions by ``factor`` around ``anchor`` (a point of the viewport); Fit to Window ends."""
+        scroll = self.scroll
+        old_h, old_v = scroll.zoom()
+        h = min(ZOOM_MAX[0], max(ZOOM_MIN[0], old_h * factor))
+        v = min(ZOOM_MAX[1], max(ZOOM_MIN[1], old_v * factor))
+        self.fit = False
+        if (h, v) != (old_h, old_v):
+            viewport = scroll.viewport()
+            anchor = anchor if anchor is not None else QPoint(viewport.width() // 2, viewport.height() // 2)
+            hbar, vbar = scroll.horizontalScrollBar(), scroll.verticalScrollBar()
+            # the point under the anchor, in canvas pixels, stays under it
+            x = (hbar.value() + anchor.x()) * h / old_h
+            y = (vbar.value() + anchor.y()) * v / old_v
+            self.get_comps_ref()['zoom factor'][:] = [h, v]
+            scroll.set_zoom(h, v)
+            hbar.setValue(round(x - anchor.x()))
+            vbar.setValue(round(y - anchor.y()))
+        if self.on_zoomed is not None:
+            self.on_zoomed(self, h, v)
+
+    def request_fit(self):
+        """Two-finger double tap: back to Fit to Window."""
+        if self.on_fit_requested is not None:
+            self.on_fit_requested(self)
+        else:
+            self.fit = True
+            self.apply_fit()
 
     def apply_fit(self):
         """Zoom the shown diagram to the space it has, if Fit to Window is on and it is laid out."""

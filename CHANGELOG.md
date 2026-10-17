@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 — 2026-10-17
+
+- Diagram window: pinch on the trackpad zooms in and out around the point between the fingers (both directions together); ⌘ + mouse wheel does the same. Zooming this way switches Fit to Window off and the zoom sliders follow; a two-finger double tap switches Fit to Window on again. Limits as the sliders (10–300 % across, 10–600 % up).
+
 ## 0.10.3 — 2026-10-17
 
 - File ▸ Export Table as CSV… writes all columns (hidden ones too), the filtered lines in the current sort order, so the file opens again as a catalog of its own; before, hiding Species or the quantum numbers left them out and the file could not be reopened properly.
