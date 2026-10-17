@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1 — 2026-10-17
+
+- Boltzmann constant: the exact 2019 SI value k_B = 1.380649 × 10⁻¹⁶ erg/K (was 1.3806488 × 10⁻¹⁶, the 2010 value, while h and c were already the 2019 ones). Only last digits change: energies in K by about 1.4 × 10⁻⁷, and the last digit of some S_ij μ², A_ij, τ and d_ij. The built-in catalogs rebuild themselves at the first start.
+- User Guide, appendix: hc/k_B = 1.43877688 K per cm⁻¹ (it showed 1.43877709, the value of the old k_B).
+- Tests: the windows' settings now go to a throwaway INI file on every system. On macOS the tests used the real linecat settings, so a large-diagram limit set in the app made a test wait for an answer (and a test reset that setting).
+
 ## 0.10.0 — 2026-10-17
 
 - Diagrams are as large as their content needs: every level gets at least a line of text and transition circles never overlap; groups of transitions at different heights share a column, so a large selection grows downwards (NH3 with 70 lines: 12 in wide instead of 44). Fit to Window stops at that readable size and the diagram scrolls instead of squeezing the labels together. Less empty space above the top and below the bottom level.

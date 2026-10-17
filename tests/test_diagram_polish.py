@@ -220,3 +220,10 @@ def test_latex_commands_have_header_and_energies(window, monkeypatch):
     assert len(set(energies)) == len(energies)                          # each level its own energy
     assert "\\DrawTr" in text and ",K}" not in text
     pw.close()
+
+
+def test_tests_never_use_the_real_settings(window):
+    from PySide6.QtCore import QSettings
+
+    assert window.settings.format() == QSettings.IniFormat               # throwaway file, also on macOS
+    assert window.settings.value(KEY_LIMIT) is None

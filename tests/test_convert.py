@@ -14,7 +14,11 @@ SLICES = Path(__file__).resolve().parent / "data" / "cdms"  # 120 lines spread o
 
 @pytest.mark.parametrize("species", ["OH", "CH3OH", "SiO", "NH3"])
 def test_conversion_matches_reference(species, tmp_path):
-    """Same CSV, byte for byte, as the row-by-row converter of linecat 0.2.2 made from these slices."""
+    """Same CSV, byte for byte, as the reference made from these slices.
+
+    The references are from the row-by-row converter of linecat 0.2.2, regenerated in 0.10.1 for the
+    exact 2019 SI k_B (only last digits of E (K), S_ij mu^2, A_ij, tau and d_ij changed).
+    """
     result = convert_molecule_catalog(species, outdir=tmp_path, catalogs_dir=SLICES)
     expected = SLICES / "expected" / f"CDMS_{species}.csv"
     assert result.path.read_bytes() == expected.read_bytes()

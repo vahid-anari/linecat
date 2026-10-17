@@ -54,7 +54,7 @@ class ConversionResult:
 # =============================================================================
 h: float = 6.62607015e-27  # Planck constant [erg·s]
 c: float = 2.99792458e10  # Speed of light [cm/s]
-k_B: float = 1.3806488e-16  # Boltzmann constant [erg/K]
+k_B: float = 1.380649e-16  # Boltzmann constant [erg/K], exact since the 2019 SI
 
 # Prefactors for radiative transition formulas
 C_A_ij: float = (8 * np.pi / c ** 2) * 1e4

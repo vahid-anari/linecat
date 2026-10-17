@@ -27,6 +27,26 @@ def qapp():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def private_settings(qapp):
+    """The windows' QSettings('linecat', 'linecat') go to an INI file in the throwaway folder.
+
+    setPath() above has no effect on the native format on macOS (and Windows), so without this the
+    tests would read and change the user's real linecat settings (e.g. the large-diagram limit).
+    """
+    import linecat.catalog_window
+    import linecat.diagram.window
+
+    def ini_settings(*args):
+        return QSettings(QSettings.IniFormat, QSettings.UserScope, *args)
+
+    patch = pytest.MonkeyPatch()
+    for module in (linecat.catalog_window, linecat.diagram.window):
+        patch.setattr(module, "QSettings", ini_settings)
+    yield
+    patch.undo()
+
+
+@pytest.fixture(scope="session", autouse=True)
 def builtin_folder(tmp_path_factory):
     """Built-in catalogs go to a throwaway folder, never the user's application-data folder."""
     import linecat.builtin
