@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.3 — 2026-10-17
+
+- File ▸ Export Table as CSV… writes all columns (hidden ones too), the filtered lines in the current sort order, so the file opens again as a catalog of its own; before, hiding Species or the quantum numbers left them out and the file could not be reopened properly.
+- LaTeX Commands in a simple, documented pattern for any molecule: `\Level{name}{label}{energy}` and `\Transition{type}{number}{upper}{lower}{frequency in MHz}{lifetime in s}`, levels named L1, L2, … from the lowest energy, exact catalog values; no positions and no CDMS-specific level names (replaces `\DrawLevel`/`\DrawTr`, which needed one particular template). User Guide: the pattern and how to define the commands yourself.
+
 ## 0.10.2 — 2026-10-17
 
 - User Guide: new screenshots — the main window (CH3OH filtered to the 6.7 GHz maser's upper level), the diagram window, hovering over an arrow and over a level, and the Molecule box with its documentation menu. README pictures updated with them.

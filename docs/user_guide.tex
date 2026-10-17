@@ -147,8 +147,8 @@ header for the column menu:
   \item \menu{Font\dots}, \menu{Default Font}.
 \end{itemize}
 These settings are remembered between sessions. \menu{File\then Export Table as CSV\dots}
-(\key{Cmd+E}) writes the table as shown: the filtered lines, the visible columns and the current sort
-order.
+(\key{Cmd+E}) writes the filtered lines in the current sort order with all columns, hidden ones
+included, so the file opens again in \AppName{} as a catalog of its own.
 
 % ── 3 ─────────────────────────────────────────────────────────────────────────
 \section{The energy-level diagram}
@@ -225,10 +225,36 @@ same for the filter labels.
 
 \subsection{Saving}
 \menu{File\then Save Figure as PDF\dots} (\key{Cmd+S}) writes a two-page PDF: the diagram, then the
-transition table. \menu{File\then LaTeX Commands\dots} shows the diagram as \LaTeX{} commands
-(\verb|\DrawLevel| and \verb|\DrawTr|, which need the definitions of your diagram template) to paste
-into your own document; \menu{Copy} puts them on the clipboard and \menu{Save\dots} writes a
-\texttt{.tex} file.
+transition table.
+
+\menu{File\then LaTeX Commands\dots} lists the levels and transitions of the tab as two \LaTeX{}
+commands, for drawing your own diagram; \menu{Copy} puts them on the clipboard and \menu{Save\dots}
+writes a \texttt{.tex} file. For the diagram of Figure~\ref{fig:diagram}:
+\begin{verbatim}
+% CH3OH · 6.67-539 GHz · 3 lines -- linecat 0.10.3
+\Level{L1}{$3_{0, 3}^{+}\,(0)$}{9.6806}
+...
+\Level{L7}{$5_{1, 5}^{+}\,(0)$}{34.0983}
+\Transition{pri}{1}{L7}{L2}{538570.553}{1.014e3}
+...
+\Transition{sec}{1}{L2}{L1}{193454.358}{3.303e4}
+\end{verbatim}
+\begin{tabular}{@{}>{\ttfamily}l l@{}}
+  \toprule
+  \textrm{Command} & Arguments\\
+  \midrule
+  \textbackslash Level & name, label (as in the diagram), energy in cm$^{-1}$\\
+  \textbackslash Transition & type (\texttt{pri} or \texttt{sec}), number, upper and lower level,\\
+                            & frequency in MHz, lifetime in s\\
+  \bottomrule
+\end{tabular}
+
+Levels are named \texttt{L1}, \texttt{L2}, \dots{} from the lowest energy up, so the transitions refer
+to them by name; numbers are the catalog's. \AppName{} does not define the two commands: write them as
+you like, for instance with TikZ, storing each level's position under its name with
+\verb|\coordinate| and drawing an arrow between two names; \verb|\num| from \texttt{siunitx} prints
+the numbers. A level that the catalog lists only as an upper state gets the energy of its first line
+(lower energy $+\,h\nu$); the others get the lower-state energy as listed by CDMS.
 
 % ── 4 ─────────────────────────────────────────────────────────────────────────
 \section{Converting CDMS catalogs}\label{sec:convert}

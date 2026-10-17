@@ -53,13 +53,19 @@ def test_table_headers_and_formats(window):
     assert "×10<sup>" in tau or tau.replace(".", "").isdigit()
 
 
-def test_export_visible_columns(window, tmp_path, monkeypatch):
+def test_export_keeps_all_columns_and_reopens(window, tmp_path, monkeypatch):
     out = tmp_path / "out.csv"
     monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(out), "")))
-    window.table_view.set_visible_columns(["Frequency (MHz)", "tau (s)"])
+    window.table_view.set_visible_columns(["Frequency (MHz)", "tau (s)"])  # Species etc. hidden
+    window.filter_combos["U-S J"].set_value("3/2")
+    window.update_filters()
     window.on_menu_action("File", "export", False)
-    df = pd.read_csv(out)
-    assert list(df.columns) == ["Frequency (MHz)", "tau (s)"] and len(df) == 129
+    df = pd.read_csv(out, dtype=str)
+    assert list(df.columns) == list(window.df.columns) and len(df) == len(window.filtered_df)
+    assert "Species" in df.columns and set(df["U-S J"]) == {"3/2"}
+    window.load_file(str(out))                                         # opens as a catalog of its own
+    assert window.molecule_info is not None and window.molecule_info.species == "OH"
+    assert len(window.df) == len(df)
 
 
 def test_recent_list_and_clear(window, oh_csv, tmp_path):

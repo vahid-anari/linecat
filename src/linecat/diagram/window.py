@@ -21,8 +21,9 @@ from sciwidgets.window import MenuBarController, center_on_screen
 
 from linecat.diagram.elements import (
     BBOX_STYLES, H_STEPS, LevelLine, TransitionArrow, assign_lvls_y_positions, fit_side_margins, frequency_parts,
-    level_y_limits, lifetime_parts, size_to_content, tex_fontsize_factor,
+    level_y_limits, size_to_content, tex_fontsize_factor,
 )
+from linecat.diagram.export import latex_commands
 from linecat.diagram.latex_cache import prerender_latex
 from linecat.diagram.tab import DiagramTab
 from linecat.diagram.table import (
@@ -71,6 +72,10 @@ class DiagramWindow(QMainWindow):
         self.latex_available = latex_available
         self.settings = parent.settings if parent is not None else QSettings('linecat', 'linecat')
         self.df = self.build_compatible_df(df)
+        # a level's energy for the LaTeX commands: CDMS lists it as a lower-state energy; a level that is
+        # only ever an upper state has the one computed from its first line (lower energy + h nu)
+        self._lower_energy = dict(zip(self.df['lower lvl'], self.df['lower E exact']))
+        self._upper_energy = dict(zip(self.df['upper lvl'][::-1], self.df['upper E exact'][::-1]))
         self.tabs_content = []
         # Tabs
         self.tabs = QTabWidget()
@@ -83,6 +88,10 @@ class DiagramWindow(QMainWindow):
         self.build_new_tab(first, self.primary_title(first))
         self.show()
         center_on_screen(self, (1500, 1000), fallback=(1400, 900))
+
+    def level_energy(self, level):
+        """The level's energy in cm^-1 as the catalog writes it (see __init__)."""
+        return self._lower_energy.get(level, self._upper_energy.get(level, ""))
 
     def primary_title(self, trs_df):
         """Title of the first tab: molecule, frequency range and number of lines."""
@@ -258,14 +267,13 @@ class DiagramWindow(QMainWindow):
         tab_content.use_latex_checkbox = False
 
     def latex_format(self):
-        """File ▸ LaTeX Commands…: the diagram of the current tab as \\DrawLevel/\\DrawTr commands."""
+        """File ▸ LaTeX Commands…: the levels and transitions of the current tab as \\Level/\\Transition."""
         from linecat import __version__
         from linecat.dialogs import LatexCommandsDialog
 
         idx = self.tabs.currentIndex()
         title = self.tabs.tabText(idx)
-        header = (f"% {title} -- made by linecat {__version__} (Line Catalog Explorer)\n"
-                  "% Needs the \\DrawLevel and \\DrawTr definitions of your diagram template.\n\n")
+        header = f"% {title} -- linecat {__version__}\n"
         name = re.sub(r"[^\w.-]+", "_", f"{self.molecule_info.species}_diagram").strip("_") + ".tex"
         LatexCommandsDialog(header + self.tabs_content[idx].get_comps()['latex text'], self.settings,
                             default_name=name, parent=self).exec()
@@ -371,11 +379,17 @@ class DiagramWindow(QMainWindow):
         df['lower lvl'] = transform(df, 'L-S')
         df['upper E'] = df['U-S E (cm^-1)'].map(lambda x: f'{float(x):.4f}')
         df['lower E'] = df['L-S E (cm^-1)'].map(lambda x: f'{float(x):.4f}')
+        # the catalog's own text, for the LaTeX commands
+        df['upper E exact'] = df['U-S E (cm^-1)'].astype(str).str.strip()
+        df['lower E exact'] = df['L-S E (cm^-1)'].astype(str).str.strip()
+        df['nu exact'] = df['Frequency (MHz)'].astype(str).str.strip()
+        df['tau exact'] = df['tau (s)'].astype(str).str.strip()
         df.rename(columns={
             'Frequency (MHz)': 'nu',
             'tau (s)': 'tau',
         }, inplace=True)
-        df = df[['upper lvl', 'lower lvl', 'upper E', 'lower E', 'nu', 'tau', 'd_ij (D)']].copy()
+        df = df[['upper lvl', 'lower lvl', 'upper E', 'lower E', 'nu', 'tau', 'd_ij (D)',
+                 'upper E exact', 'lower E exact', 'nu exact', 'tau exact']].copy()
         df['transition'] = make_tr_text(df)
         for col in ['upper E', 'lower E', 'nu', 'tau']:
             df[col] = df[col].astype(float)
@@ -491,9 +505,7 @@ class DiagramWindow(QMainWindow):
     def _build_trs_fig(self, lvls_df, pri_trs_df, sec_trs_df, use_latex):
         tr_arrows = []
         lvls = []
-        lvls_text = ""
-        pri_trs_text = ""
-        sec_trs_text = ""
+        exported = []  # (type, number, row) for the LaTeX commands
         N_LVLs = len(lvls_df)
         ys = assign_lvls_y_positions(lvls_df)
         lvls_df['y'] = ys
@@ -526,43 +538,6 @@ class DiagramWindow(QMainWindow):
             trs_from_lvl = sec_trs_df[sec_trs_df['upper lvl'] == lvl]
             m = max(1, len(trs_from_lvl))
             return m, trs_from_lvl
-
-        def convert_level_for_latex(level, with_comma=True):
-            lvl = re.sub(r'[_^\\,]', ',', level)
-            lvl = re.sub(r',+', ',', lvl)
-            if with_comma:
-                return re.sub(r'[\${}() \\]', '', lvl)
-            else:
-                return re.sub(r'[\${}(), \\]', '', lvl)
-
-        def transition_text(tr, x):
-            freq, unit = frequency_parts(tr['nu'])
-            m, e = lifetime_parts(tr['tau'])
-            # \DrawTr{<i>}{<f>}{<ν,G>}{<τman,τexp>}{<Δx_i,Δx_f>}{<loc>}{<pos>}{<dx,dy>}
-            return (rf"\DrawTr"
-                    fr"{{l_{convert_level_for_latex(tr['upper lvl'], False)}}}"
-                    fr"{{l_{convert_level_for_latex(tr['lower lvl'], False)}}}"
-                    fr"{{{freq},{unit}}}"
-                    fr"{{{m},{e}}}"
-                    f"{{{x},{x}}}"
-                    "{right}{0.5}{0,0}\n"
-                    )
-
-        def level_text(lvl):
-            # \DrawLevel{<x,y>}{<J,Ka,Kc,parity,vt>}{<E>}
-            return (rf"\DrawLevel{{0,{lvl.y}}}"
-                    f"{{{convert_level_for_latex(lvl.level)}}}"
-                    f"{{{lvl.E:0.5f}}}\n"
-                    )
-
-        def make_final_text():
-            sec_trs_txt = f'%-- Secondary Transitions:\n{sec_trs_text}' if sec_trs_text else ''
-            return (f'%-- Levels:\n'
-                    f'{lvls_text}\n'
-                    f'%-- Primary Transitions:\n'
-                    f'{pri_trs_text}\n'
-                    + sec_trs_txt
-                    )
 
         highlighted = []
 
@@ -677,7 +652,7 @@ class DiagramWindow(QMainWindow):
             x = centre - (len(trs_to_lvl) - 1) / 2. * H_STEPS['h-small']
             # Primary transitions
             for _, tr in trs_to_lvl.iterrows():
-                pri_trs_text += transition_text(tr, x)
+                exported.append(('pri', pri_tr_number, tr))
                 tr_arrows.append(draw_transition(ax_line, tr, x, H_STEPS['h-small'], 'pri', pri_tr_number))
                 add_row(table_df, 'pri', pri_tr_number, tr)
                 pri_tr_number += 1
@@ -686,7 +661,7 @@ class DiagramWindow(QMainWindow):
             x = centre - (m - 1) / 2. * H_STEPS['h-small']
             # Secondary transitions
             for _, tr in trs_from_lvl.iterrows():
-                sec_trs_text += transition_text(tr, x)
+                exported.append(('sec', sec_tr_number, tr))
                 tr_arrows.append(draw_transition(ax_line, tr, x, H_STEPS['h-small'], 'sec', sec_tr_number))
                 add_row(table_df, 'sec', sec_tr_number, tr)
                 sec_tr_number += 1
@@ -700,7 +675,6 @@ class DiagramWindow(QMainWindow):
         header = draw_level_line(ax_header, self.molecule_info.label_template, r"$\mathbf{Energy\,(cm^{-1})}$", header=True,
                         molecule_name=self.molecule_info.latex_name)
         for _, level in lvls_df.iterrows():
-            lvls_text += level_text(level)
             lvl = draw_level_line(ax_line, level.level, f'${level["E"]:0.4f}$', WIDTH, level.y)
             lvls.append(lvl)
         fig.level_lines = [header, *lvls]  # their labels set the side margins (fit_side_margins)
@@ -719,4 +693,5 @@ class DiagramWindow(QMainWindow):
         ax_line.axis("off")
         ax_header.set_ylim(-0.5, 0.5)
         ax_header.axis("off")
-        return fig, ax_line, make_final_text(), lvls, tr_arrows, table_df, selection
+        latex_text = latex_commands(lvls_df['level'], exported, self.level_energy)
+        return fig, ax_line, latex_text, lvls, tr_arrows, table_df, selection

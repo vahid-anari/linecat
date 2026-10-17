@@ -203,7 +203,9 @@ def test_latex_dialog_copy_and_save(qapp, tmp_path):
     assert settings.value('paths/tex_dir') == str(tmp_path)
 
 
-def test_latex_commands_have_header_and_energies(window, monkeypatch):
+def test_latex_commands_pattern(window, monkeypatch):
+    import re
+
     import linecat.dialogs as dialogs
 
     texts = []
@@ -212,14 +214,42 @@ def test_latex_commands_have_header_and_energies(window, monkeypatch):
     window.update_filters()
     window.on_menu_action("Transitions", "show_diagram", False)
     pw = window.plot_window
+    pw.on_view_toggled("secondary", True)
     pw.latex_format()
     text = texts[0]
-    assert text.startswith("% OH · ") and "\\DrawLevel and \\DrawTr definitions" in text
-    levels = [line for line in text.splitlines() if line.startswith("\\DrawLevel")]
-    energies = sorted(float(line.rsplit("{", 1)[1].rstrip("}")) for line in levels)
-    assert len(set(energies)) == len(energies)                          # each level its own energy
-    assert "\\DrawTr" in text and ",K}" not in text
+    assert text.startswith("% OH · ") and "% \\Level{name}{label}{energy in cm^-1}" in text
+    levels = re.findall(r"^\\Level\{(L\d+)\}\{(.+)\}\{([^}]*)\}$", text, re.M)
+    names = [name for name, _, _ in levels]
+    assert names == [f"L{i}" for i in range(1, len(levels) + 1)]
+    energies = [float(e) for _, _, e in levels]
+    assert energies == sorted(energies) and all(label.startswith("$") for _, label, _ in levels)
+    transitions = re.findall(r"^\\Transition\{(pri|sec)\}\{(\d+)\}\{(L\d+)\}\{(L\d+)\}\{([^}]*)\}\{([^}]*)\}$",
+                             text, re.M)
+    comps = pw.tabs_content[0].get_comps()
+    assert len(transitions) == len(comps['arrows'])
+    assert {t for t, *_ in transitions} == {"pri", "sec"}
+    for _, _, upper, lower, nu, tau in transitions:
+        assert upper in names and lower in names
+        assert float(nu) > 0 and re.fullmatch(r"\d\.\d+e-?\d+", tau)
+    assert "DrawLevel" not in text and "DrawTr" not in text
     pw.close()
+
+
+def test_level_energy_is_the_catalog_lower_state_value(window):
+    window.filter_combos["U-S J"].set_value("3/2")
+    window.update_filters()
+    window.on_menu_action("Transitions", "show_diagram", False)
+    pw = window.plot_window
+    row = pw.df.iloc[0]
+    assert pw.level_energy(row['lower lvl']) == row['lower E exact']
+    pw.close()
+
+
+def test_tex_number():
+    from linecat.diagram.export import tex_number
+
+    assert tex_number("1.014E+03") == "1.014e3" and tex_number(" 6.277E-08") == "6.277e-8"
+    assert tex_number("538570.553") == "538570.553"
 
 
 def test_tests_never_use_the_real_settings(window):

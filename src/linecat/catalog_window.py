@@ -563,8 +563,8 @@ class CatalogWindow(QMainWindow):
         """
         Export the currently displayed data to a CSV file chosen by the user.
 
-        Opens a save-file dialog for CSV selection and writes the table as
-        shown (filtered rows, visible columns, current sort order).
+        Opens a save-file dialog and writes the filtered lines in the current sort order with all
+        columns, hidden ones included, so that the file opens again as a catalog of its own.
 
         Returns
         -------
@@ -578,8 +578,9 @@ class CatalogWindow(QMainWindow):
             if not path.lower().endswith('.csv'):
                 path += '.csv'
             self.settings.setValue('paths/export_dir', str(Path(path).parent))
-            self.table_view.export_csv(path)
-            self.status.set_state(f"Exported {len(self.table_view.visible_frame()):,} lines to {Path(path).name}")
+            frame = self.table_view.frame()  # sorted as shown, every column
+            frame.to_csv(path, index=False)
+            self.status.set_state(f"Exported {len(frame):,} lines to {Path(path).name}")
 
     def open_diagram(self):
         with busy():

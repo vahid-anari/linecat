@@ -63,8 +63,8 @@ linecat --version
 
 File → Open Built-in Catalog → OH / CH3OH / SiO / NH3 (⌘1–⌘4) opens a
 catalog that ships with linecat; File → Open Catalog… loads any other CSV; the quantum-number filters and the
-frequency range narrow the table; File → Export Table as CSV… writes what is
-shown; Transitions → Show Energy-Level Diagram draws the selected lines
+frequency range narrow the table; File → Export Table as CSV… writes the filtered
+lines (all columns, so the file opens again as a catalog); Transitions → Show Energy-Level Diagram draws the selected lines
 (hover for ν and τ, double-click a transition for the lines from its lower
 level). Right-click a column header for colours, alignment, font and columns.
 
