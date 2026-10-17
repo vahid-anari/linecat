@@ -51,6 +51,7 @@ def test_view_shows_splash_then_window(qapp, monkeypatch, oh_csv):
     monkeypatch.setattr(cw, "latex_available", lambda: False)
     monkeypatch.setattr(type(qapp), "exec", lambda self: 0)
     monkeypatch.setattr(cli.sys, "argv", ["linecat"])
+    monkeypatch.setattr(cli, "SPLASH_SECONDS", 0)
     assert cli.run_view(str(oh_csv)) == 0
     assert qapp.applicationDisplayName() == cli.APP_DISPLAY_NAME
     assert not qapp.windowIcon().isNull()
@@ -58,3 +59,31 @@ def test_view_shows_splash_then_window(qapp, monkeypatch, oh_csv):
     for widget in qapp.topLevelWidgets():
         if isinstance(widget, cw.CatalogWindow):
             widget.close()
+
+
+def test_splash_stays_for_the_minimum_time(qapp, monkeypatch, oh_csv):
+    from PySide6.QtCore import QTimer
+
+    import linecat.catalog_window as cw
+    from linecat import main as cli
+
+    monkeypatch.setattr(cw, "latex_available", lambda: False)
+    monkeypatch.setattr(cli.sys, "argv", ["linecat"])
+    monkeypatch.setattr(cli, "SPLASH_SECONDS", 30)
+    timers = []
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, fn: timers.append((ms, fn)))
+    seen = {}
+
+    def run(self):
+        windows = [w for w in self.topLevelWidgets() if isinstance(w, cw.CatalogWindow) and not w.isVisible()]
+        splash_timers = [fn for ms, fn in timers if 20_000 < ms <= 30_000]
+        seen["delay"] = len(splash_timers) == 1
+        splash_timers[0]()
+        seen["shown"] = any(w.isVisible() for w in windows)
+        for w in windows:
+            w.close()
+        return 0
+
+    monkeypatch.setattr(type(qapp), "exec", run)
+    assert cli.run_view(str(oh_csv)) == 0
+    assert seen == {"delay": True, "shown": True}

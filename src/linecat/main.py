@@ -58,9 +58,13 @@ def run_convert(args: argparse.Namespace) -> int:
 
 
 APP_DISPLAY_NAME = "Line Catalog Explorer"
+SPLASH_SECONDS = 3.5  # the splash stays at least this long, so it can be seen
 
 
 def run_view(catalog: str | None) -> int:
+    import time
+
+    from PySide6.QtCore import QTimer
     from PySide6.QtGui import QColor, QIcon
     from PySide6.QtWidgets import QApplication
     from sciwidgets.splash import SplashScreen
@@ -74,6 +78,7 @@ def run_view(catalog: str | None) -> int:
     app.setWindowIcon(QIcon(str(APP_ICON)))
 
     base = 35
+    shown_at = time.monotonic()
     splash = SplashScreen(
         APP_IMAGE,
         size=(16 * base, 9 * base),
@@ -90,8 +95,16 @@ def run_view(catalog: str | None) -> int:
     apply_sci_style(app, APP_STYLE_SHEET)
     splash.show_message("Building the window...")
     window = CatalogWindow(catalog)
-    window.show()
-    splash.finish(window)
+
+    def show_window() -> None:
+        window.show()
+        splash.finish(window)
+
+    remaining = SPLASH_SECONDS - (time.monotonic() - shown_at)
+    if remaining > 0:
+        QTimer.singleShot(round(1000 * remaining), show_window)
+    else:
+        show_window()
     return app.exec()
 
 

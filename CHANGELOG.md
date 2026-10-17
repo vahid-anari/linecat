@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 — 2026-10-17
+
+- The splash stays at least 3.5 seconds (`SPLASH_SECONDS` in `main.py`), so it can be seen; a slower start-up adds nothing.
+
 ## 0.7.0 — 2026-10-17
 
 - App identity: the app is called **Line Catalog Explorer** (the package and command stay `linecat`).

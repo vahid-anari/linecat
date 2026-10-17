@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linecat"
-version = "0.7.0"
+version = "0.7.1"
 description = "Viewer for CDMS/JPL spectral line catalogs: filter transitions and draw energy-level diagrams"
 readme = "README.md"
 license = "MIT"
