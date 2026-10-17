@@ -29,6 +29,16 @@ pip install -e .
 linecat
 ```
 
+To start it with a double-click, run once:
+
+```
+linecat install-app
+```
+
+This adds Line Catalog Explorer to your Applications folder (macOS), the Start menu
+(Windows) or the applications menu (Linux), with its own icon. It starts the linecat
+of the Python you ran the command with, and keeps working after updates.
+
 ## Use
 
 ```
@@ -36,6 +46,7 @@ linecat                       open the viewer
 linecat my_catalog.csv        open a catalog at start
 linecat convert               convert the shipped CDMS files into the current folder
 linecat convert OH --catalogs my_cats --output-dir out   convert your own .cat files
+linecat install-app           add the app to Applications / Start menu (--remove to undo)
 linecat --version
 ```
 

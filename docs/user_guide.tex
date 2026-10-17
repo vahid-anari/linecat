@@ -53,6 +53,19 @@ linecat
 rendered with real \LaTeX{} (Section~\ref{sec:latex}); without it \AppName{} uses Matplotlib's
 built-in math rendering.
 
+\subsection{Starting with a double-click}
+Run once
+\begin{verbatim}
+linecat install-app
+\end{verbatim}
+This adds \emph{Line Catalog Explorer} with its icon to the Applications folder
+(\texttt{\textasciitilde/Applications}, also in Launchpad and Spotlight; drag it to the Dock to keep
+it there), to the Start menu on Windows or to the applications menu on Linux. It starts the
+\AppName{} of the Python the command was run with, and keeps the \texttt{PATH} of that terminal so
+that \LaTeX{} is found as from the terminal. After an update \AppName{} refreshes the launcher by
+itself. \texttt{linecat install-app --remove} removes it; run \texttt{linecat install-app} again
+if you move or replace that Python.
+
 \subsection{First start and the built-in catalogs}
 \AppName{} ships the CDMS catalog files of four molecules: OH, CH$_3$OH, SiO and NH$_3$. On the
 first start, and after every update of \AppName{}, it converts them into CSV catalogs; this takes
@@ -195,6 +208,8 @@ Appendix~\ref{app:equations}.
   linecat convert OH SiO & convert some species\\
   linecat convert --catalogs DIR & convert your own \texttt{.cat} files in DIR\\
   \dots{} --output-dir OUT & write the CSV files to OUT\\
+  linecat install-app & add the app to Applications / the Start menu\\
+  linecat install-app --remove & remove it again\\
   linecat --version & show the version\\
   \bottomrule
 \end{tabular}

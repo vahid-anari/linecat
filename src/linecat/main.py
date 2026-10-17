@@ -15,6 +15,9 @@ def build_parser() -> argparse.ArgumentParser:
     view = sub.add_parser("view", help="open the viewer (default)")
     view.add_argument("catalog", nargs="?", help="CSV catalog to open")
 
+    install = sub.add_parser("install-app", help="add the app to Applications / the Start menu / the app menu")
+    install.add_argument("--remove", action="store_true", help="remove the launcher again")
+
     convert = sub.add_parser("convert", help="convert CDMS .cat files to the CSV catalogs the viewer reads")
     convert.add_argument("species", nargs="*", help="species codes (OH, CH3OH, SiO, NH3); none = every one found")
     convert.add_argument("--catalogs", default=None, metavar="DIR",
@@ -61,6 +64,42 @@ APP_DISPLAY_NAME = "Line Catalog Explorer"
 SPLASH_SECONDS = 3.5  # the splash stays at least this long, so it can be seen
 
 
+PLACE = {"mac": "your Applications folder (also in Launchpad and Spotlight)",
+         "linux": "the applications menu",
+         "windows": "the Start menu"}
+
+
+def run_install_app(args: argparse.Namespace) -> int:
+    from linecat import launcher
+
+    system = launcher.current_system()
+    if args.remove:
+        removed = launcher.remove_app(system=system)
+        if not removed:
+            print("No launcher found; nothing removed.")
+        for path in removed:
+            print(f"Removed {path}")
+        return 0
+    try:
+        written = launcher.install_app(system=system)
+    except (OSError, ValueError) as exc:
+        print(f"Could not create the launcher: {exc}", file=sys.stderr)
+        return 1
+    print(f"Created {written[0]}")
+    print(f"{APP_DISPLAY_NAME} is now in {PLACE[system]}.")
+    print(f"It starts the linecat of this Python: {launcher.python_for_launcher(system)}")
+    if system == "mac":
+        print("Drag it to the Dock to keep it there. Run this command again if you move Python.")
+    return 0
+
+
+def refresh_launcher() -> None:
+    """Rebuild an app launcher of this installation made by an older linecat (never raises)."""
+    from linecat.launcher import refresh_if_outdated
+
+    refresh_if_outdated()
+
+
 def run_view(catalog: str | None) -> int:
     import time
 
@@ -105,16 +144,20 @@ def run_view(catalog: str | None) -> int:
         QTimer.singleShot(round(1000 * remaining), show_window)
     else:
         show_window()
+    QTimer.singleShot(round(1000 * max(remaining, 0)) + 3000, lambda: refresh_launcher())
     return app.exec()
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
-    if argv and argv[0] not in ("view", "convert", "-h", "--help", "--version"):
+    argv = [a for a in argv if not a.startswith("-psn_")]  # old macOS Finder argument
+    if argv and argv[0] not in ("view", "convert", "install-app", "-h", "--help", "--version"):
         argv = ["view", *argv]
     args = build_parser().parse_args(argv)
     if args.command == "convert":
         return run_convert(args)
+    if args.command == "install-app":
+        return run_install_app(args)
     return run_view(getattr(args, "catalog", None))
 
 

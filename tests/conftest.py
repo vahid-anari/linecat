@@ -40,6 +40,17 @@ def builtin_folder(tmp_path_factory):
     patch.undo()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def no_launcher_refresh():
+    """The app's start-up check never touches a real launcher during the tests."""
+    import linecat.main
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(linecat.main, "refresh_launcher", lambda: None)
+    yield
+    patch.undo()
+
+
 @pytest.fixture
 def oh_csv():
     return DATA / "oh_small.csv"
