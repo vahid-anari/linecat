@@ -4,7 +4,7 @@
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**linecat** ("line catalog") is a desktop viewer for spectral line catalogs
+**linecat** (Line Catalog Explorer) is a desktop viewer for spectral line catalogs
 such as [CDMS](https://cdms.astro.uni-koeln.de/). It loads a catalog converted
 to CSV, filters the transitions by frequency range and by the quantum numbers of
 the upper and lower states, shows the result in a table, exports the selection,

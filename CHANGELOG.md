@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 — 2026-10-17
+
+- App identity: the app is called **Line Catalog Explorer** (the package and command stay `linecat`).
+- App icon (three energy levels and a transition, on indigo) and a start-up splash (the CH3OH stick spectrum below 1 THz) with the name and version, as in Maxwell Bloch Studio. The slow imports now run behind the splash.
+- `tools/make_icon.py` and `tools/make_splash.py` draw both pictures into `src/linecat/data/icons/`; the splash is computed from the shipped CDMS files.
+
 ## 0.6.0 — 2026-10-16
 
 - User Guide (Help → User Guide): getting started, the main window, the energy-level diagram, converting CDMS catalogs, the command line, adding a species, and the equations behind the derived columns as an appendix.

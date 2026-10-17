@@ -22,6 +22,9 @@ from linecat.molecules import REGISTRY
 DATA_DIR = Path(__file__).resolve().parent / "data"
 SOURCES_DIR = DATA_DIR / "molecules"  # one folder per species: .cat files, documentation PDFs, <SPECIES>.svg
 DOCS_DIR = DATA_DIR / "docs"  # general CDMS documentation
+ICONS_DIR = DATA_DIR / "icons"
+APP_ICON = ICONS_DIR / "app_icon.png"  # made by tools/make_icon.py
+APP_IMAGE = ICONS_DIR / "app_image.png"  # splash picture, made by tools/make_splash.py
 STAMP_NAME = ".linecat-version"
 
 

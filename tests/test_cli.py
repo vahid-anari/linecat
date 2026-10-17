@@ -40,3 +40,21 @@ def test_species_folder_accepted(tmp_path):
     assert main(["convert", "--catalogs", str(CATALOGS / "SiO"), "--output-dir", str(tmp_path)]) == 0
     assert (tmp_path / "CDMS_SiO.csv").is_file()
 
+
+
+def test_view_shows_splash_then_window(qapp, monkeypatch, oh_csv):
+    from sciwidgets.splash import SplashScreen
+
+    import linecat.catalog_window as cw
+    from linecat import main as cli
+
+    monkeypatch.setattr(cw, "latex_available", lambda: False)
+    monkeypatch.setattr(type(qapp), "exec", lambda self: 0)
+    monkeypatch.setattr(cli.sys, "argv", ["linecat"])
+    assert cli.run_view(str(oh_csv)) == 0
+    assert qapp.applicationDisplayName() == cli.APP_DISPLAY_NAME
+    assert not qapp.windowIcon().isNull()
+    assert SplashScreen.current() is None  # finished once the window was shown
+    for widget in qapp.topLevelWidgets():
+        if isinstance(widget, cw.CatalogWindow):
+            widget.close()

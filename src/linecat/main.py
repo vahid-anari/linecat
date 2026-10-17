@@ -8,7 +8,7 @@ from linecat import __version__
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="linecat", description="Viewer for CDMS/JPL spectral line catalogs.")
+    parser = argparse.ArgumentParser(prog="linecat", description="Line Catalog Explorer: viewer for CDMS/JPL spectral line catalogs.")
     parser.add_argument("--version", action="version", version=f"linecat {__version__}")
     sub = parser.add_subparsers(dest="command")
 
@@ -57,17 +57,41 @@ def run_convert(args: argparse.Namespace) -> int:
     return 0
 
 
+APP_DISPLAY_NAME = "Line Catalog Explorer"
+
+
 def run_view(catalog: str | None) -> int:
+    from PySide6.QtGui import QColor, QIcon
     from PySide6.QtWidgets import QApplication
+    from sciwidgets.splash import SplashScreen
     from sciwidgets.style import apply_sci_style
 
-    from linecat.catalog_window import APP_STYLE_SHEET, CatalogWindow
+    from linecat.builtin import APP_ICON, APP_IMAGE
 
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("linecat")
+    app.setApplicationDisplayName(APP_DISPLAY_NAME)
+    app.setWindowIcon(QIcon(str(APP_ICON)))
+
+    base = 35
+    splash = SplashScreen(
+        APP_IMAGE,
+        size=(16 * base, 9 * base),
+        title=APP_DISPLAY_NAME.replace(" ", "\n"),
+        subtitle=f"Version {__version__}",
+        font_family="Times New Roman",
+        subtitle_color=QColor(215, 205, 255),
+        delay=0.05,
+    )
+    splash.show_message("Starting...")
+
+    from linecat.catalog_window import APP_STYLE_SHEET, CatalogWindow  # the slow imports, behind the splash
+
     apply_sci_style(app, APP_STYLE_SHEET)
+    splash.show_message("Building the window...")
     window = CatalogWindow(catalog)
     window.show()
+    splash.finish(window)
     return app.exec()
 
 

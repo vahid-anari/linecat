@@ -91,3 +91,12 @@ def test_help_user_guide(window, monkeypatch):
     monkeypatch.setattr(cw, "show_warning", lambda *a, **k: warned.append(a))
     window.on_menu_action("Help", "user_guide", False)
     assert (opened == [user_guide()]) != bool(warned)  # opens the PDF, or explains how to build it
+
+
+def test_app_icon_and_splash_image_ship():
+    from PIL import Image
+
+    from linecat.builtin import APP_ICON, APP_IMAGE
+
+    assert Image.open(APP_ICON).size == (1024, 1024)
+    assert Image.open(APP_IMAGE).size == (2400, 1350)

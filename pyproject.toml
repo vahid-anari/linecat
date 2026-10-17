@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linecat"
-version = "0.6.0"
+version = "0.7.0"
 description = "Viewer for CDMS/JPL spectral line catalogs: filter transitions and draw energy-level diagrams"
 readme = "README.md"
 license = "MIT"
@@ -41,7 +41,7 @@ Issues = "https://github.com/vahid-anari/linecat/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-linecat = ["data/*.pdf", "data/molecules/*/*.cat", "data/molecules/*/*.pdf", "data/molecules/*/*.svg", "data/docs/*.pdf"]
+linecat = ["data/*.pdf", "data/molecules/*/*.cat", "data/molecules/*/*.pdf", "data/molecules/*/*.svg", "data/docs/*.pdf", "data/icons/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
