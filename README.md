@@ -1,7 +1,8 @@
 # linecat
 
 [![tests](https://github.com/vahid-anari/linecat/actions/workflows/tests.yml/badge.svg)](https://github.com/vahid-anari/linecat/actions/workflows/tests.yml)
-![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
+[![PyPI](https://img.shields.io/pypi/v/linecat)](https://pypi.org/project/linecat/)
+[![Python](https://img.shields.io/pypi/pyversions/linecat)](https://pypi.org/project/linecat/)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 **linecat** (Line Catalog Explorer) is a desktop viewer for spectral line catalogs
@@ -20,13 +21,16 @@ quantum-number rules to `linecat/molecules.py`.
 
 ## Installation
 
-linecat is not on PyPI yet; install it from a clone (Python 3.10 or newer):
+Python 3.10 or newer. With [pipx](https://pipx.pypa.io/) (its own environment, recommended):
 
 ```
-git clone https://github.com/vahid-anari/linecat.git
-cd linecat
-pip install -e .
-linecat
+pipx install linecat
+```
+
+or with pip, in an environment of your choice:
+
+```
+pip install linecat
 ```
 
 To start it with a double-click, run once:
@@ -39,6 +43,12 @@ This adds Line Catalog Explorer to your Applications folder (macOS), the Start m
 (Windows) or the applications menu (Linux), with its own icon. It starts the linecat
 of the Python you ran the command with, and keeps working after updates.
 
+To update, use Help → Check for Updates… in the app (it also checks quietly at
+start-up) or `linecat update` in a terminal.
+
+For development, install from a clone: `git clone https://github.com/vahid-anari/linecat.git`,
+then `pip install -e ".[dev]"` in the folder; such a copy is updated with `git pull`.
+
 ## Use
 
 ```
@@ -46,6 +56,7 @@ linecat                       open the viewer
 linecat my_catalog.csv        open a catalog at start
 linecat convert               convert the shipped CDMS files into the current folder
 linecat convert OH --catalogs my_cats --output-dir out   convert your own .cat files
+linecat update                update from PyPI (asks first; --check only looks)
 linecat install-app           add the app to Applications / Start menu (--remove to undo)
 linecat --version
 ```

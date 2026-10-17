@@ -4,17 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linecat"
-version = "0.8.0"
-description = "Viewer for CDMS/JPL spectral line catalogs: filter transitions and draw energy-level diagrams"
+version = "0.9.0"
+description = "Line Catalog Explorer: filter CDMS spectral line catalogs and draw energy-level diagrams"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Vahid Anari", email = "vahid.anari8@gmail.com" }]
 requires-python = ">=3.10"
+keywords = ["spectroscopy", "CDMS", "line catalog", "molecular lines", "energy-level diagram", "astronomy", "PySide6"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications :: Qt",
     "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
@@ -36,6 +45,7 @@ linecat = "linecat.main:main"
 Homepage = "https://github.com/vahid-anari/linecat"
 Source = "https://github.com/vahid-anari/linecat"
 Issues = "https://github.com/vahid-anari/linecat/issues"
+Changelog = "https://github.com/vahid-anari/linecat/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

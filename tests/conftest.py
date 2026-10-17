@@ -41,12 +41,12 @@ def builtin_folder(tmp_path_factory):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def no_launcher_refresh():
-    """The app's start-up check never touches a real launcher during the tests."""
+def no_background_tasks():
+    """No update check over the network and no launcher refresh while the tests start the app."""
     import linecat.main
 
     patch = pytest.MonkeyPatch()
-    patch.setattr(linecat.main, "refresh_launcher", lambda: None)
+    patch.setattr(linecat.main, "after_start", lambda window: None)  # no update check, no launcher refresh
     yield
     patch.undo()
 

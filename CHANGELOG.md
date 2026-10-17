@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 — 2026-10-17
+
+- linecat is on PyPI: `pipx install linecat` (or `pip install linecat`).
+- Updates, as in Maxwell Bloch Studio: a quiet check a couple of seconds after start-up, Help → Check for Updates…, and `linecat update [--check] [--yes]`. A newer version is shown with its release notes; Update Now runs `pipx upgrade linecat` or `pip install -U linecat` (whichever matches the installation) and offers a restart. Copies installed with `pip install -e` are told to `git pull`.
+- README and User Guide: installing from PyPI, Updating; PyPI metadata (keywords, classifiers, changelog link).
+
 ## 0.8.0 — 2026-10-17
 
 - `linecat install-app` adds Line Catalog Explorer to Applications (macOS, with Launchpad, Spotlight and the Dock), the Start menu (Windows) or the applications menu (Linux), with the app icon; `--remove` removes it. Ported from Maxwell Bloch Studio: the launcher starts this installation's Python (`python -m linecat`, now available) and keeps the installing terminal's PATH so LaTeX is found; it is rebuilt by itself after an update.

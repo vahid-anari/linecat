@@ -76,7 +76,7 @@ def test_splash_stays_for_the_minimum_time(qapp, monkeypatch, oh_csv):
 
     def run(self):
         windows = [w for w in self.topLevelWidgets() if isinstance(w, cw.CatalogWindow) and not w.isVisible()]
-        splash_timers = [fn for ms, fn in timers if 20_000 < ms <= 30_000]
+        splash_timers = [fn for ms, fn in timers if getattr(fn, "__name__", "") == "show_window" and ms > 20_000]
         seen["delay"] = len(splash_timers) == 1
         splash_timers[0]()
         seen["shown"] = any(w.isVisible() for w in windows)

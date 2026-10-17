@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from linecat import __version__
+from linecat.app_info import APP_NAME as APP_DISPLAY_NAME
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -14,6 +15,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     view = sub.add_parser("view", help="open the viewer (default)")
     view.add_argument("catalog", nargs="?", help="CSV catalog to open")
+
+    update = sub.add_parser("update", help="update linecat from PyPI (asks first)")
+    update.add_argument("--check", action="store_true", help="only tell whether a newer version exists")
+    update.add_argument("--yes", "-y", action="store_true", help="update without asking")
 
     install = sub.add_parser("install-app", help="add the app to Applications / the Start menu / the app menu")
     install.add_argument("--remove", action="store_true", help="remove the launcher again")
@@ -60,7 +65,6 @@ def run_convert(args: argparse.Namespace) -> int:
     return 0
 
 
-APP_DISPLAY_NAME = "Line Catalog Explorer"
 SPLASH_SECONDS = 3.5  # the splash stays at least this long, so it can be seen
 
 
@@ -91,6 +95,12 @@ def run_install_app(args: argparse.Namespace) -> int:
     if system == "mac":
         print("Drag it to the Dock to keep it there. Run this command again if you move Python.")
     return 0
+
+
+def after_start(window) -> None:
+    """A few seconds after start-up: a quiet update check and refreshing an old app launcher."""
+    window.check_for_updates(manual=False)
+    refresh_launcher()
 
 
 def refresh_launcher() -> None:
@@ -144,20 +154,24 @@ def run_view(catalog: str | None) -> int:
         QTimer.singleShot(round(1000 * remaining), show_window)
     else:
         show_window()
-    QTimer.singleShot(round(1000 * max(remaining, 0)) + 3000, lambda: refresh_launcher())
+    QTimer.singleShot(round(1000 * max(remaining, 0)) + 2000, lambda: after_start(window))
     return app.exec()
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
     argv = [a for a in argv if not a.startswith("-psn_")]  # old macOS Finder argument
-    if argv and argv[0] not in ("view", "convert", "install-app", "-h", "--help", "--version"):
+    if argv and argv[0] not in ("view", "convert", "update", "install-app", "-h", "--help", "--version"):
         argv = ["view", *argv]
     args = build_parser().parse_args(argv)
     if args.command == "convert":
         return run_convert(args)
     if args.command == "install-app":
         return run_install_app(args)
+    if args.command == "update":
+        from linecat.update import run_update
+
+        return run_update(args)
     return run_view(getattr(args, "catalog", None))
 
 

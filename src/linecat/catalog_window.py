@@ -11,7 +11,7 @@ from PySide6.QtCore import QSettings, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
 
-from sciwidgets.dialogs import AskResult, ask_question, show_about_dialog, show_warning
+from sciwidgets.dialogs import AskResult, ask_question, show_about_dialog, show_information, show_warning
 from sciwidgets.labels import set_latex_enabled
 from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
@@ -79,6 +79,8 @@ class CatalogWindow(QMainWindow):
         self.setWindowTitle("linecat")
 
         self.settings = QSettings('linecat', 'linecat')
+        self._update_checker = None
+        self._manual_update_check = False
         self.latex_available = latex_available()
         self.use_latex = self.latex_available and self.settings.value('view/use_latex', True, type=bool)
         set_latex_enabled(self.use_latex)
@@ -167,6 +169,7 @@ class CatalogWindow(QMainWindow):
                 {"submenu": "CDMS Documentation",
                  "items": [{"id": f"gdoc_{i}", "text": path.stem} for i, path in enumerate(general_docs())]},
                 {"id": "sep"},
+                {"id": "check_updates", "text": "Check for Updates…"},
                 {"id": "about", "text": "About linecat"},
             ],
         }
@@ -207,6 +210,8 @@ class CatalogWindow(QMainWindow):
             index = int(action_id.split('_')[1])
             if index < len(docs):
                 open_file(docs[index])
+        elif action_id == 'check_updates':
+            self.check_for_updates(manual=True)
         elif action_id == 'about':
             self.show_about()
 
@@ -284,6 +289,56 @@ class CatalogWindow(QMainWindow):
         folder = builtin_dir()
         folder.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    # ----- updates -----
+    def check_for_updates(self, manual=False):
+        """Ask PyPI for a newer linecat; ``manual`` (Help menu) also reports "up to date" and failures."""
+        from linecat.update_ui import UpdateChecker
+
+        if self._update_checker is None:
+            self._update_checker = UpdateChecker(self)
+            self._update_checker.updateAvailable.connect(self._on_update_available)
+            self._update_checker.upToDate.connect(self._on_up_to_date)
+            self._update_checker.checkFailed.connect(self._on_update_check_failed)
+        self._manual_update_check = manual
+        self._update_checker.check()
+
+    def _on_update_available(self, latest, notes):
+        from linecat.app_info import APP_VERSION, DIST_NAME, PYPI_URL, RELEASES_URL
+        from linecat.update import EDITABLE_HINT, install_kind, update_command
+        from linecat.update_ui import UpdateDialog, UpdateProgressDialog, restart_app
+
+        self._manual_update_check = False
+        kind = install_kind()
+        command = update_command(kind)
+        dialog = UpdateDialog(latest, APP_VERSION, " ".join(command) if command else f"pipx upgrade {DIST_NAME}",
+                              notes, PYPI_URL, RELEASES_URL, parent=self, can_update=command is not None,
+                              hint=EDITABLE_HINT if kind == "editable" else "", dist_name=DIST_NAME)
+        if dialog.exec() != UpdateDialog.UPDATE_NOW or command is None:
+            return
+        progress = UpdateProgressDialog(
+            command, latest,
+            manual_hint=("Close the app and run <code>linecat update</code> in a terminal "
+                         f"(or <code>{' '.join(command)}</code>)."),
+            parent=self,
+        )
+        progress.exec()
+        if progress.restart_requested:
+            restart_app(self.close)
+
+    def _on_up_to_date(self):
+        if self._manual_update_check:
+            from linecat.app_info import APP_NAME, APP_VERSION
+
+            show_information("No Updates", f"{APP_NAME} {APP_VERSION} is the latest version.", parent=self)
+        self._manual_update_check = False
+
+    def _on_update_check_failed(self, message):
+        if self._manual_update_check:
+            from html import escape
+
+            show_warning("Update Check Failed", "Could not check for updates.", escape(message), parent=self)
+        self._manual_update_check = False
 
     def show_about(self):
         show_about_dialog(

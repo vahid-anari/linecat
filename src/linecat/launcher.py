@@ -24,7 +24,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from linecat import __version__ as APP_VERSION
-from linecat.main import APP_DISPLAY_NAME as APP_NAME
+from linecat.app_info import APP_NAME
 
 APP_ICON_PATH = Path(__file__).resolve().parent / "data" / "icons" / "app_icon.png"  # = builtin.APP_ICON
 BUNDLE_ID = "io.github.vahid-anari.linecat"

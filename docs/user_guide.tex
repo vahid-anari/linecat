@@ -42,13 +42,14 @@ draws the energy levels and transitions of any selection as a diagram that can b
 or exported as \LaTeX{} commands.
 
 \subsection{Installing}
-\AppName{} needs Python 3.10 or newer. From a clone of the repository:
+\AppName{} needs Python 3.10 or newer. Install it from PyPI with pipx, which gives it an
+environment of its own,
 \begin{verbatim}
-git clone https://github.com/vahid-anari/linecat.git
-cd linecat
-pip install -e .
-linecat
+pipx install linecat
 \end{verbatim}
+or with \texttt{pip install linecat} in an environment of your choice, and start it with
+\texttt{linecat}. For development, clone the repository and run \texttt{pip install -e .} in it.
+
 \LaTeX{} is optional: with a \LaTeX{} installation the filter labels and the diagram can be
 rendered with real \LaTeX{} (Section~\ref{sec:latex}); without it \AppName{} uses Matplotlib's
 built-in math rendering.
@@ -65,6 +66,16 @@ it there), to the Start menu on Windows or to the applications menu on Linux. It
 that \LaTeX{} is found as from the terminal. After an update \AppName{} refreshes the launcher by
 itself. \texttt{linecat install-app --remove} removes it; run \texttt{linecat install-app} again
 if you move or replace that Python.
+
+\subsection{Updating}
+A couple of seconds after it starts, \AppName{} asks PyPI in the background whether a newer
+version exists; if so it shows what is new (from the release notes) and offers
+\menu{Update Now}, which runs \texttt{pipx upgrade linecat} or \texttt{pip install -U linecat},
+whichever matches the installation, and then offers a restart. Without an internet connection
+nothing is shown. \menu{Help\then Check for Updates\dots} checks on request and also reports when
+\AppName{} is up to date. In a terminal, \texttt{linecat update --check} shows whether there is a
+newer version, and \texttt{linecat update} installs it (it asks first). A copy installed from a
+clone with \texttt{pip install -e} is updated with \texttt{git pull} instead.
 
 \subsection{First start and the built-in catalogs}
 \AppName{} ships the CDMS catalog files of four molecules: OH, CH$_3$OH, SiO and NH$_3$. On the
@@ -208,6 +219,8 @@ Appendix~\ref{app:equations}.
   linecat convert OH SiO & convert some species\\
   linecat convert --catalogs DIR & convert your own \texttt{.cat} files in DIR\\
   \dots{} --output-dir OUT & write the CSV files to OUT\\
+  linecat update & update from PyPI (asks first)\\
+  linecat update --check & only show whether a newer version exists\\
   linecat install-app & add the app to Applications / the Start menu\\
   linecat install-app --remove & remove it again\\
   linecat --version & show the version\\
