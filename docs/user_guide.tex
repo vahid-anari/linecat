@@ -1,0 +1,232 @@
+\documentclass[11pt]{article}
+\input{metadata.tex}
+\newcommand{\DocName}{User Guide}
+\usepackage{style}
+\setlength{\emergencystretch}{2em}  % long menu paths in sans serif
+
+% menu paths and keys
+\newcommand{\menu}[1]{\textsf{#1}}
+\newcommand{\key}[1]{\textsf{#1}}
+\newcommand{\then}{\,$\triangleright$\,}
+
+\begin{document}
+
+% ── Title page ────────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{3cm}
+  {\fontsize{40}{48}\selectfont\bfseries\color{accent} \AppName\par}
+  \vspace{0.6cm}
+  {\Large Viewer for CDMS spectral line catalogs\par}
+  \vspace{2cm}
+  \includegraphics[width=0.8\textwidth]{figures/molecules.pdf}\par
+  \vspace{2cm}
+  {\Large \DocName\par}
+  \vspace{0.3cm}
+  {\large Version \AppVersion\par}
+  \vfill
+  {\large \AppAuthor\par}
+  {\small \href{mailto:\AppEmail}{\AppEmail}\par}
+  {\small \url{https://github.com/vahid-anari/linecat}\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ── 1 ─────────────────────────────────────────────────────────────────────────
+\section{Getting started}
+
+\AppName{} (``line catalog'') shows the spectral line catalogs of the Cologne Database for
+Molecular Spectroscopy (CDMS) as a table you can filter by quantum numbers and frequency, and
+draws the energy levels and transitions of any selection as a diagram that can be saved as PDF
+or exported as \LaTeX{} commands.
+
+\subsection{Installing}
+\AppName{} needs Python 3.10 or newer. From a clone of the repository:
+\begin{verbatim}
+git clone https://github.com/vahid-anari/linecat.git
+cd linecat
+pip install -e .
+linecat
+\end{verbatim}
+\LaTeX{} is optional: with a \LaTeX{} installation the filter labels and the diagram can be
+rendered with real \LaTeX{} (Section~\ref{sec:latex}); without it \AppName{} uses Matplotlib's
+built-in math rendering.
+
+\subsection{First start and the built-in catalogs}
+\AppName{} ships the CDMS catalog files of four molecules: OH, CH$_3$OH, SiO and NH$_3$. On the
+first start, and after every update of \AppName{}, it converts them into CSV catalogs; this takes
+about a second. The CSV files are written read-only to the application-data folder
+(on macOS \texttt{\textasciitilde/Library/Application Support/linecat/catalogs/}); if one goes
+missing it is rebuilt at the next start.
+
+Open one with \menu{File\then Open Built-in Catalog} or with
+\key{Cmd+1}--\key{Cmd+4} (OH, CH$_3$OH, SiO, NH$_3$). \menu{File\then Open Built-in
+Catalog\then Show Built-in Catalogs Folder} shows the folder in the Finder.
+
+\begin{notebox}
+Any other catalog in the same CSV format opens with \menu{File\then Open Catalog\dots}
+(\key{Cmd+O}); the last five are listed under \menu{File\then Open Recent}. Section~\ref{sec:convert}
+explains how to make such a CSV from a CDMS \texttt{.cat} file.
+\end{notebox}
+
+% ── 2 ─────────────────────────────────────────────────────────────────────────
+\section{The main window}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{figures/main_window.png}
+  \caption{The main window with the built-in CH$_3$OH catalog.}
+  \label{fig:main}
+\end{figure}
+
+The top row holds three boxes: the molecule, the quantum-number filters and the frequency range.
+Below them is the table of the lines that pass the filters. The status bar shows how many lines
+are shown out of how many in the catalog, and the path of the catalog.
+
+\subsection{Molecule}
+The \emph{Molecule} box shows a picture of the molecule, its name, the CDMS tag(s) of the catalog
+entries, the partition function $Q$ at 300~K used for the line strengths, and the number of lines.
+\menu{Documentation} lists the CDMS documentation of the entries (for OH: $v=0$, 1 and 2); it is
+included with \AppName{} and opens without an internet connection. The general CDMS documents
+are under \menu{Help\then CDMS Documentation}.
+
+\subsection{Quantum-number filters}
+\emph{Quantum Numbers} has one column per quantum number of the molecule and two rows, for the
+upper and the lower state. Each list offers the values that still occur among the lines that pass
+the other filters, so the choices narrow as you select. \menu{All} switches a filter off.
+\menu{View\then Reset Filters} sets every filter back to \menu{All} and the frequency range back
+to the whole catalog.
+
+\subsection{Frequency range}
+\emph{From} and \emph{To} set the range in the unit chosen under \emph{Frequency Unit}: Hz, KHz,
+MHz, GHz or THz, or a wavelength in \AA, nm, \textmu m, mm or m. \menu{Apply} applies the range.
+The check box in the title switches the range off without losing the values typed in.
+
+\subsection{The table}
+Click a column header to sort by that column; click again to reverse the order. Right-click a
+header for the column menu:
+\begin{itemize}[nosep]
+  \item \menu{Column Color\dots}, \menu{No Column Color}, \menu{Default Column Color};
+  \item \menu{Text Color\dots}, \menu{Default Text Color};
+  \item \menu{Alignment} (left, centre, right or the default);
+  \item \menu{Hide This Column}, \menu{Choose Columns\dots} (also in \menu{View});
+  \item \menu{Reset Colors};
+  \item \menu{Font\dots}, \menu{Default Font}.
+\end{itemize}
+These settings are remembered between sessions. \menu{File\then Export Table as CSV\dots}
+(\key{Cmd+E}) writes the table as shown: the filtered lines, the visible columns and the current sort
+order.
+
+% ── 3 ─────────────────────────────────────────────────────────────────────────
+\section{The energy-level diagram}
+
+\menu{Transitions\then Show Energy-Level Diagram} (\key{Cmd+D}) draws the lines shown in the table
+as a diagram of their energy levels and transitions. Above 50 transitions \AppName{} asks before
+drawing, since large diagrams become crowded and slow.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=\textwidth]{figures/diagram.png}
+  \caption{The diagram window: transition table on the left, diagram on the right.}
+  \label{fig:diagram}
+\end{figure}
+
+\subsection{Levels, transitions and the transition table}
+Each level is a horizontal line, labelled with its quantum numbers on the left and its energy
+(cm$^{-1}$) on the right; each transition is a numbered arrow from the upper to the lower level.
+The table on the left lists the same transitions with their frequency $\nu$, lifetime $\tau$ and
+transition dipole moment $d_{ij}$; rows are coloured by type.
+
+Hovering over an arrow highlights it, its two levels and its row in the table, and shows $\nu$
+and $\tau$ next to the pointer; hovering over a level highlights the transitions that start or
+end on it. The other way round, selecting rows in the table highlights their arrows.
+
+\subsection{Tabs and secondary transitions}
+Double-click an arrow to open a new tab with all transitions that start from its lower level.
+\menu{View\then Secondary Transitions} adds to the current tab the transitions that leave the
+lower levels of the primary ones (drawn in blue). Each tab keeps its own settings; the first tab,
+\emph{Primary Transitions}, cannot be closed.
+
+\subsection{Zoom and real scale}
+\menu{Fit to window} (check box under the zoom sliders, or \menu{View\then Fit to Window},
+\key{Cmd+0}) scales the diagram to the space beside the table and follows the window when it is
+resized. Switch it off to set the \emph{Horizontal} and \emph{Vertical} zoom by hand.
+
+By default the levels are evenly spaced, in order of energy. The \emph{Real Scale} sliders move
+them towards their true energies: \emph{Coarse} (0--95\,\%) and \emph{Fine} (0--5\,\%) add up to
+the fraction of the true spacing used, 100\,\% being energies to scale.
+
+\subsection{\LaTeX{} rendering}\label{sec:latex}
+\menu{View\then Use LaTeX for Rendering} redraws the diagram with \LaTeX{}. The labels are
+rendered in the background behind a progress dialog the first time; \LaTeX{} keeps the results,
+so later drawings are quick. In the main window, \menu{View\then Use LaTeX for Labels} does the
+same for the filter labels.
+
+\subsection{Saving}
+\menu{File\then Save Figure as PDF\dots} (\key{Cmd+S}) writes a two-page PDF: the diagram, then the
+transition table. \menu{File\then LaTeX Commands\dots} shows the diagram as \LaTeX{} commands
+(\verb|\DrawLevel| and \verb|\DrawTr|) to paste into your own document; \menu{Copy} puts them on
+the clipboard.
+
+% ── 4 ─────────────────────────────────────────────────────────────────────────
+\section{Converting CDMS catalogs}\label{sec:convert}
+
+The built-in catalogs cover OH, CH$_3$OH, SiO and NH$_3$. To use a newer CDMS release, download
+the \texttt{.cat} files of the entries from \url{https://cdms.astro.uni-koeln.de/} and put them in a
+folder per species, named as in \AppName{} (\texttt{OH/c017507.cat}, \dots). Then choose
+\menu{File\then Convert CDMS Catalogs\dots} and select either the folder that holds the species
+folders or a single species folder. The CSV files are written next to the \texttt{.cat} files; a
+progress dialog and a short report follow. A single converted catalog opens by itself.
+
+For each line the converter computes the wavelength, the upper-state energy, both energies in
+kelvin, the Einstein coefficient $A_{ij}$, the lifetime $\tau = 1/A_{ij}$, the line strength
+$S_{ij}\mu^2$ and the transition dipole moment $d_{ij}$, using the relations in
+Appendix~\ref{app:equations}.
+
+% ── 5 ─────────────────────────────────────────────────────────────────────────
+\section{Command line}
+
+\begin{tabular}{@{}>{\ttfamily}l l@{}}
+  \toprule
+  linecat & open the viewer\\
+  linecat CATALOG.csv & open a catalog at start\\
+  linecat convert & convert the built-in CDMS files (into the current folder)\\
+  linecat convert OH SiO & convert some species\\
+  linecat convert --catalogs DIR & convert your own \texttt{.cat} files in DIR\\
+  \dots{} --output-dir OUT & write the CSV files to OUT\\
+  linecat --version & show the version\\
+  \bottomrule
+\end{tabular}
+
+% ── 6 ─────────────────────────────────────────────────────────────────────────
+\section{Adding a species}
+
+A species is described in \texttt{linecat/molecules.py} by a \texttt{MoleculeInfo}: its name, the
+\texttt{.cat} files, the partition function and temperature, the quantum numbers of the CDMS
+format and the filters shown in the window. Two functions complete it:
+\texttt{<name>\_standardize(df, prefix)}, which turns the raw quantum numbers into the ones shown
+(for example $\Omega$ and the parity of OH), working on whole columns of the table, and
+\texttt{<name>\_label(df, prefix)}, which writes the level labels of the diagram. Register the
+species in \texttt{REGISTRY} and put its \texttt{.cat} files, the CDMS documentation PDFs of its
+entries and a picture \texttt{<SPECIES>.svg} in \texttt{linecat/data/molecules/<SPECIES>/}.
+
+% ── References ────────────────────────────────────────────────────────────────
+\section*{References}
+\addcontentsline{toc}{section}{References}
+The catalog data come from the Cologne Database for Molecular Spectroscopy; please cite
+\begin{itemize}[nosep]
+  \item H.\,S.\,P. Müller et al., 2001, Astron. Astrophys. 370, L49;
+  \item H.\,S.\,P. Müller et al., 2005, J. Mol. Struct. 742, 215;
+  \item C.\,P. Endres et al., 2016, J. Mol. Spectrosc. 327, 95.
+\end{itemize}
+The catalog format and the SPCAT program are described by H.\,M. Pickett et al., 1998,
+J. Quant. Spectrosc. Radiat. Transfer 60, 883. The CDMS documentation pages included with
+\AppName{} are reproduced with credit to CDMS.
+
+% ── Appendix ──────────────────────────────────────────────────────────────────
+\newpage
+\appendix
+\input{equations.tex}
+
+\end{document}

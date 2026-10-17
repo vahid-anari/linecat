@@ -65,6 +65,13 @@ described by Pickett et al. 1998, J. Quant. Spectrosc. Radiat. Transfer 60, 883.
 The CDMS documentation pages included with linecat are reproduced with credit
 to CDMS.
 
+## User Guide
+
+Help → User Guide opens the guide (PDF). Its sources are in `docs/`
+(`user_guide.tex`, with the equations in `equations.tex`); after a change,
+`sh tools/build_docs.sh` rebuilds it into `src/linecat/data/user_guide.pdf`
+(needs a TeX installation, e.g. MacTeX).
+
 ## Tests
 
 ```

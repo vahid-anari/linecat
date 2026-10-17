@@ -78,3 +78,16 @@ def test_molecule_box(window, builtin_folder, monkeypatch):
     box.docs_menu.actions()[0].trigger()
     assert opened and "OH, v=0.pdf" in str(opened[0].toLocalFile() if hasattr(opened[0], "toLocalFile") else opened[0])
     assert window.menu.action("gdoc_0") is not None
+
+
+def test_help_user_guide(window, monkeypatch):
+    import linecat.catalog_window as cw
+    from linecat.builtin import user_guide
+
+    assert user_guide().name == "user_guide.pdf"
+    assert window.menu.action("user_guide") is not None
+    opened, warned = [], []
+    monkeypatch.setattr(cw, "open_file", lambda path: opened.append(path))
+    monkeypatch.setattr(cw, "show_warning", lambda *a, **k: warned.append(a))
+    window.on_menu_action("Help", "user_guide", False)
+    assert (opened == [user_guide()]) != bool(warned)  # opens the PDF, or explains how to build it

@@ -1,0 +1,169 @@
+% Equations behind the A_ij, d_ij, S_ij and energy columns (Vahid Anari, "Some useful equations").
+% Included as an appendix of the User Guide.
+\providecommand{\unit}[1]{\,\mathrm{#1}}
+\providecommand{\inunit}[2]{\left[\frac{#1}{\mathrm{#2}}\right]}
+\providecommand{\bz}[1]{e^{-#1/kT}}
+
+\section{Equations}\label{app:equations}
+These are the relations \texttt{linecat convert} uses to derive the radiative quantities of each line
+from the CDMS catalog entries (frequency, intensity at $T=300$~K, lower-state energy, upper-state
+degeneracy and the partition function $Q_{rs}(300\,\mathrm{K})$).
+\textcolor{warnborder}{All equations are in cgs units.}
+
+\subsection{Constants and conversion factors}
+\begin{equation}
+\begin{aligned}
+  h   &= 6.62607015\times10^{-27}\unit{erg\cdot s}\\
+  k_B &= 1.380649\times10^{-16}\unit{erg\cdot K^{-1}}\\
+  c   &= 2.99792458\times10^{10}\unit{cm\cdot s^{-1}}\\
+  1\unit{D} &= 10^{-18}\unit{statC\cdot cm}\\
+  1\unit{erg} &= \mathrm{statC^2\cdot cm^{-1}}\\
+  {}^{x}S_{ij}\,\mu_x^2 &= g_i\,\mu_{ij}^2
+\end{aligned}
+\end{equation}
+
+\subsection{Conversion relations (Section~\ref{app:a})}
+Frequency ($\mathrm{MHz}\to\mathrm{cm^{-1}}$):
+\begin{equation}
+  \inunit{\tilde\nu}{cm^{-1}} = 3.33564095\times10^{-5}\inunit{\nu}{MHz}
+\end{equation}
+Energy ($\mathrm{cm^{-1}}\to\mathrm{K}$):
+\begin{equation}
+  \inunit{T}{K} = 1.43877709\inunit{\tilde\nu}{cm^{-1}}
+\end{equation}
+
+\subsection{Intensity}
+The intensity $I(T)$ is calculated according to
+\begin{equation}
+  I(T) = \frac{8\pi^3}{3hc}\,\nu\,S_g\,\mu_g^2\,
+         \frac{\bz{E''}-\bz{E'}}{Q_{rs}(T)}
+\end{equation}
+with $\nu$ and $S_g$ the line frequency and strength, $\mu_g$ the dipole moment along the
+molecular $g$-axis, $E''$ and $E'$ the lower and upper state energy, and $Q_{rs}$ the
+rotation-spin partition function at the temperature~$T$.
+With $I(T)$ in $\mathrm{nm^2\,MHz}$, $\nu$ in MHz and $\mu_g$ in D one obtains
+(Section~\ref{app:b})
+\begin{equation}
+  I(T) = \nu\,S_g\,\mu_g^2\,\frac{\bz{E''}-\bz{E'}}{Q_{rs}(T)}\;
+         4.16237896\times10^{-5}\unit{nm^2\,MHz}
+\end{equation}
+
+\subsection{Spontaneous emission rate}
+The average spontaneous emission rate from the upper states into the lower states is
+\begin{equation}
+  A = \frac{8\pi\nu^2}{c^2}\,I(T)\left(\frac{Q_{rs}(T)}{g_{up}}\right)
+      \left[\bz{E''}-\bz{E'}\right]^{-1}
+\end{equation}
+in which $g_{up}$ is the degeneracy of the upper state.
+With $I(T)$ in $\mathrm{nm^2\,MHz}$ and $\nu$ in MHz one obtains (Section~\ref{app:b})
+\begin{equation}
+  A = I(T)\,\nu^2\left[Q_{rs}(T)/g_{up}\right]
+      \left[\bz{E''}-\bz{E'}\right]^{-1}\,2.79639459\times10^{-16}\unit{s^{-1}}
+\end{equation}
+
+\noindent\textcolor{red}{Note:} numerical problems may occur in this equation if the
+frequency $\nu$ is small with respect to the lower state energy $E''$. So, if
+$\bz{E''}-\bz{E'}=0$ numerically, we use
+\begin{equation}
+  \bz{E''}-\bz{E'} \simeq \frac{h\nu}{kT}\,\bz{E''}
+\end{equation}
+
+\subsection{Transition dipole moment}
+\begin{equation}
+  \mu^2 = \frac{3hc^3}{64\pi^4\nu^3}\,A
+\end{equation}
+With $A$ in $\mathrm{s^{-1}}$ and $\nu$ in MHz one obtains (Section~\ref{app:b})
+\begin{equation}
+  \mu = \sqrt{\frac{A}{\nu^3}}\;9.26894\times10^{9}\unit{D}
+\end{equation}
+
+\subsection{Derivation of the conversion relations}\label{app:a}
+\begin{align*}
+  \inunit{\tilde\nu}{cm^{-1}} &= \frac1c\inunit{\nu}{Hz}
+                               = 3.33564095\times10^{-5}\inunit{\nu}{MHz}\\[4pt]
+  \inunit{\tilde\nu}{cm^{-1}} &= \frac1{hc}\inunit{E}{erg}
+                               = 5.03411657\times10^{15}\inunit{E}{erg}\\[4pt]
+  \inunit{T}{K} &= \frac1{k_B}\inunit{E}{erg}
+                 = \frac{hc}{k_B}\inunit{\tilde\nu}{cm^{-1}}
+                 = 1.43877709\inunit{\tilde\nu}{cm^{-1}}
+\end{align*}
+
+\subsection{Derivation of the radiative quantities}\label{app:b}
+Here $i$ is the upper and $j$ the lower state.
+
+\subsubsection*{Intensity}
+\begin{align*}
+  I_{ij}(T) &= \frac{8\pi^3}{3hc}\,\nu_{ij}\,{}^{x}S_{ij}\mu_x^2\,
+               \frac{\bz{E_j}-\bz{E_i}}{Q_{rs}(T)}\\
+  &= 4.16237896\times10^{17}
+     \left(\frac{\nu_{ij}}{\mathrm{Hz}}\right)
+     \left(\frac{{}^{x}S_{ij}\mu_x^2}{\mathrm{statC^2\cdot cm^2}}\right)
+     \frac{\bz{E_j}-\bz{E_i}}{Q_{rs}(T)}\;
+     \frac{\mathrm{Hz\cdot statC^2\cdot cm^2}}{\mathrm{erg\cdot s\cdot cm\cdot s^{-1}}}\\
+  &= 4.16237896\times10^{17}
+     \left(\frac{\nu_{ij}}{\mathrm{Hz}}\right)
+     \left(\frac{{}^{x}S_{ij}\mu_x^2}{\mathrm{statC^2\cdot cm^2}}\right)
+     \frac{\bz{E_j}-\bz{E_i}}{Q_{rs}(T)}\unit{cm^2\,Hz}\\
+  &= 4.16237896\times10^{31}
+     \left(\frac{\nu_{ij}}{\mathrm{MHz}}\right)
+     \left(\frac{{}^{x}S_{ij}\mu_x^2}{\mathrm{statC^2\cdot cm^2}}\right)
+     \frac{\bz{E_j}-\bz{E_i}}{Q_{rs}(T)}\unit{nm^2\,MHz}\\
+  &= 4.16237896\times10^{31}
+     \left(\frac{\nu_{ij}}{\mathrm{MHz}}\right)
+     \left(\frac{{}^{x}S_{ij}\mu_x^2}{\mathrm{D^2}}\,
+           \frac{\mathrm{D^2}}{\mathrm{statC^2\cdot cm^2}}\right)
+     \frac{\bz{E_j}-\bz{E_i}}{Q_{rs}(T)}\unit{nm^2\,MHz}\\
+  &= 4.16237896\times10^{-5}
+     \left(\frac{\nu_{ij}}{\mathrm{MHz}}\right)
+     \left(\frac{{}^{x}S_{ij}\mu_x^2}{\mathrm{D^2}}\right)
+     \frac{\bz{E_j}-\bz{E_i}}{Q_{rs}(T)}\unit{nm^2\,MHz}
+\end{align*}
+\begin{equation*}
+  \inunit{I_{ij}(T)}{nm^2\,MHz} = 4.16237896\times10^{-5}
+     \left(\frac{\nu_{ij}}{\mathrm{MHz}}\right)
+     \left(\frac{{}^{x}S_{ij}\mu_x^2}{\mathrm{D^2}}\right)
+     \frac{\bz{E_j}-\bz{E_i}}{Q_{rs}(T)}
+\end{equation*}
+
+\subsubsection*{Einstein A coefficient}
+\begin{align*}
+  A_{ij} &= \frac{64\pi^4\nu_{ij}^3}{3hc^3}\,\mu_{ij}^2
+          = \frac{64\pi^4\nu_{ij}^3}{3hc^3}\,\frac{{}^{x}S_{ij}\mu_x^2}{g_i}\\
+  &= \frac{64\pi^4\nu_{ij}^3}{3hc^3}\,\frac1{g_i}
+     \left\{\frac{I_{ij}(T)\,Q_{rs}(T)}
+                 {\frac{8\pi^3}{3hc}\,\nu_{ij}\left[\bz{E_j}-\bz{E_i}\right]}\right\}
+   = \frac{8\pi\nu_{ij}^2}{c^2}\,\frac{I_{ij}(T)\,Q_{rs}(T)}{g_i}
+     \left[\bz{E_j}-\bz{E_i}\right]^{-1}\\
+  &= 2.79639459\times10^{-20}\inunit{I_{ij}(T)}{nm^2\,MHz}\inunit{\nu_{ij}}{Hz}^{2}
+     \left[Q_{rs}(T)/g_i\right]\left[\bz{E_j}-\bz{E_i}\right]^{-1}
+     \frac{\mathrm{nm^2\,MHz\cdot Hz^2}}{\mathrm{cm^2\,s^{-2}}}\\
+  &= \inunit{I_{ij}(T)}{nm^2\,MHz}\inunit{\nu_{ij}}{MHz}^{2}
+     \left[Q_{rs}(T)/g_i\right]\left[\bz{E_j}-\bz{E_i}\right]^{-1}
+     2.79639459\times10^{-16}\unit{s^{-1}}
+\end{align*}
+\begin{equation*}
+  \inunit{A_{ij}}{s^{-1}} = 2.79639459\times10^{-16}\inunit{I_{ij}(T)}{nm^2\,MHz}
+     \inunit{\nu_{ij}}{MHz}^{2}\left[Q_{rs}(T)/g_i\right]e^{E_j/kT}
+     \left[1-e^{-h\nu_{ij}/kT}\right]^{-1}
+\end{equation*}
+
+\noindent\textcolor{red}{Note:} if $\bz{E''}-\bz{E'}=0$ numerically, we use
+\begin{equation*}
+  \bz{E''}-\bz{E'} = \bz{E''}\left(1-e^{-(E'-E'')/kT}\right)
+                   = \bz{E''}\left(1-e^{-h\nu/kT}\right)
+                   \simeq \frac{h\nu}{kT}\,\bz{E''}
+\end{equation*}
+
+\subsubsection*{Transition dipole moment}
+\begin{align*}
+  \mu_{ij}^2 &= \frac{3hc^3}{64\pi^4\nu_{ij}^3}\,A_{ij}\\
+  &= 85.9132065\inunit{A_{ij}}{s^{-1}}\inunit{\nu_{ij}}{Hz}^{-3}
+     \frac{\mathrm{erg\cdot s\cdot cm^3\cdot s^{-3}}}{\mathrm{s\cdot Hz^3}}
+   = 85.9132065\inunit{A_{ij}}{s^{-1}}\inunit{\nu_{ij}}{Hz}^{-3}\unit{statC^2\cdot cm^2}\\
+  &= 8.59132065\times10^{19}\inunit{A_{ij}}{s^{-1}}\inunit{\nu_{ij}}{MHz}^{-3}\unit{D^2}
+\end{align*}
+\begin{equation*}
+  \inunit{\mu_{ij}}{D} = \sqrt{8.59132065\times10^{19}\inunit{A_{ij}}{s^{-1}}
+                                \inunit{\nu_{ij}}{MHz}^{-3}}
+\end{equation*}
+

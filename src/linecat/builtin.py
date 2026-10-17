@@ -42,6 +42,11 @@ def general_docs() -> list[Path]:
     return sorted(DOCS_DIR.glob("*.pdf")) if DOCS_DIR.is_dir() else []
 
 
+def user_guide() -> Path:
+    """The User Guide PDF (built by tools/build_docs.sh)."""
+    return DATA_DIR / "user_guide.pdf"
+
+
 def builtin_dir() -> Path:
     """Folder that holds the built-in CSV catalogs (created on demand)."""
     from PySide6.QtCore import QStandardPaths

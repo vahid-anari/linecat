@@ -17,7 +17,7 @@ from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
 from linecat import __version__
-from linecat.builtin import builtin_csv, builtin_dir, ensure_builtin_catalogs, general_docs
+from linecat.builtin import builtin_csv, builtin_dir, ensure_builtin_catalogs, general_docs, user_guide
 from linecat.cdms import species_in_folder
 from linecat.convert_dialog import convert_with_progress
 from linecat.diagram import DiagramWindow
@@ -163,6 +163,7 @@ class CatalogWindow(QMainWindow):
                 {"id": "show_diagram", "text": "Show Energy-Level Diagram", "shortcut": "Ctrl+D", "enabled": False},
             ],
             "Help": [
+                {"id": "user_guide", "text": "User Guide"},
                 {"submenu": "CDMS Documentation",
                  "items": [{"id": f"gdoc_{i}", "text": path.stem} for i, path in enumerate(general_docs())]},
                 {"id": "sep"},
@@ -199,6 +200,8 @@ class CatalogWindow(QMainWindow):
             self.set_use_latex(checked)
         elif action_id == 'show_diagram':
             self.show_button()
+        elif action_id == 'user_guide':
+            self.open_user_guide()
         elif action_id.startswith('gdoc_'):
             docs = general_docs()
             index = int(action_id.split('_')[1])
@@ -268,6 +271,14 @@ class CatalogWindow(QMainWindow):
         """Open the built-in catalog of a species (rebuilt first if it went missing)."""
         if self.prepare_builtin_catalogs():
             self.load_file(str(builtin_csv(code)))
+
+    def open_user_guide(self):
+        guide = user_guide()
+        if guide.is_file():
+            open_file(guide)
+        else:
+            show_warning("User Guide", "The User Guide has not been built.",
+                         "Run tools/build_docs.sh in the linecat folder (needs a TeX installation).", parent=self)
 
     def show_builtin_folder(self):
         folder = builtin_dir()

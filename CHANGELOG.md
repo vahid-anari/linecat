@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0 — 2026-10-16
+
+- User Guide (Help → User Guide): getting started, the main window, the energy-level diagram, converting CDMS catalogs, the command line, adding a species, and the equations behind the derived columns as an appendix.
+- Guide sources in `docs/` (`user_guide.tex`, `equations.tex`, `style.sty` as in Maxwell Bloch Studio); `tools/build_docs.sh` builds the PDF into the package.
+
 ## 0.5.0 — 2026-10-16
 
 - Molecule box left of the filters: a picture of the molecule, its name, CDMS tag(s), partition function Q(300 K) and number of lines, and a Documentation button that opens the CDMS documentation of its entries (included, no internet needed).
