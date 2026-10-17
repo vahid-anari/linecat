@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2 — 2026-10-17
+
+- User Guide: new screenshots — the main window (CH3OH filtered to the 6.7 GHz maser's upper level), the diagram window, hovering over an arrow and over a level, and the Molecule box with its documentation menu. README pictures updated with them.
+
 ## 0.10.1 — 2026-10-17
 
 - Boltzmann constant: the exact 2019 SI value k_B = 1.380649 × 10⁻¹⁶ erg/K (was 1.3806488 × 10⁻¹⁶, the 2010 value, while h and c were already the 2019 ones). Only last digits change: energies in K by about 1.4 × 10⁻⁷, and the last digit of some S_ij μ², A_ij, τ and d_ij. The built-in catalogs rebuild themselves at the first start.

@@ -100,7 +100,8 @@ explains how to make such a CSV from a CDMS \texttt{.cat} file.
 \begin{figure}[h]
   \centering
   \includegraphics[width=\textwidth]{figures/main_window.png}
-  \caption{The main window with the built-in CH$_3$OH catalog.}
+  \caption{The main window with the built-in CH$_3$OH catalog, filtered to the transitions from the
+    upper level $5_{1,5}$; the first line is the 6.7~GHz methanol maser line.}
   \label{fig:main}
 \end{figure}
 
@@ -111,9 +112,16 @@ are shown out of how many in the catalog, and the path of the catalog.
 \subsection{Molecule}
 The \emph{Molecule} box shows a picture of the molecule, its name, the CDMS tag(s) of the catalog
 entries, the partition function $Q$ at 300~K used for the line strengths, and the number of lines.
-\menu{Documentation} lists the CDMS documentation of the entries (for OH: $v=0$, 1 and 2); it is
-included with \AppName{} and opens without an internet connection. The general CDMS documents
-are under \menu{Help\then CDMS Documentation}.
+\menu{Documentation} lists the CDMS documentation of the entries (for OH: $v=0$, 1 and 2,
+Figure~\ref{fig:molecule}); it is included with \AppName{} and opens without an internet connection.
+The general CDMS documents are under \menu{Help\then CDMS Documentation}.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.45\textwidth]{figures/molecule_docs.png}
+  \caption{The Molecule box of the OH catalog with its documentation menu.}
+  \label{fig:molecule}
+\end{figure}
 
 \subsection{Quantum-number filters}
 \emph{Quantum Numbers} has one column per quantum number of the molecule and two rows, for the
@@ -153,7 +161,9 @@ main window changes the number or switches the question off.
 \begin{figure}[h]
   \centering
   \includegraphics[width=\textwidth]{figures/diagram.png}
-  \caption{The diagram window: transition table on the left, diagram on the right.}
+  \caption{The diagram window: transition table on the left, diagram on the right. CH$_3$OH,
+    three primary transitions (red) with their secondary transitions (blue), drawn with \LaTeX{} at
+    27\,\% real scale.}
   \label{fig:diagram}
 \end{figure}
 
@@ -169,7 +179,26 @@ a column, so a large selection grows downwards rather than sideways.
 
 Hovering over an arrow highlights it, its two levels and its row in the table, and shows $\nu$
 and $\tau$ next to the pointer, on the side towards the middle of the diagram; hovering over a level highlights the transitions that start or
-end on it. The other way round, selecting rows in the table highlights their arrows.
+end on it (Figure~\ref{fig:hover}). The other way round, selecting rows in the table highlights their
+arrows.
+
+\begin{figure}[h]
+  \centering
+  \begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/hover_arrow.png}\\[2pt]
+    {\small (a) over an arrow}
+  \end{minipage}\hfill
+  \begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/hover_level.png}\\[2pt]
+    {\small (b) over a level}
+  \end{minipage}
+  \caption{Hovering. (a) The arrow, its two levels and its table row light up, with $\nu$ and $\tau$
+    beside the pointer. (b) Every transition that starts or ends on the level lights up, in the
+    diagram and in the table.}
+  \label{fig:hover}
+\end{figure}
 
 \subsection{Tabs and secondary transitions}
 The first tab is named after the selection, e.g.\ \emph{NH$_3$ $\cdot$ 18.4--22.2 GHz $\cdot$ 70 lines}.
