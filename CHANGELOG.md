@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1 — 2026-10-19
+
+- About asks you to cite linecat if you use it in published work, next to the CDMS references (sciwidgets 0.12.1).
+
 ## 0.13.0 — 2026-10-19
 
 - The Help menu is the same as in the author's other apps (Maxwell Bloch Studio, daftarche), from sciwidgets 0.12: User Guide (⌘?), CDMS Documentation, Check for Updates… (⌘U), and About Line Catalog Explorer (was "About linecat"), which now also lists the libraries the app is built on, with their versions and licenses.

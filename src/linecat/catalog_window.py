@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from html import escape
 from fractions import Fraction
 from pathlib import Path
 
@@ -180,6 +181,8 @@ class CatalogWindow(QMainWindow):
                 "please cite Müller et al. 2001, A&amp;A 370, L49; Müller et al. 2005, J. Mol. Struct. 742, 215; "
                 "Endres et al. 2016, J. Mol. Spectrosc. 327, 95. The CDMS documentation pages included with "
                 "the app are reproduced with credit to CDMS."),
+            citation=(f"Anari, V. <i>linecat: a viewer for spectral line catalogs</i>, version {escape(APP.version)}. "
+                      '<a href="https://github.com/vahid-anari/linecat">github.com/vahid-anari/linecat</a>'),
             missing_hint="From a clone, build it with sh tools/build_docs.sh (needs a TeX installation).",
         )
 
