@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.3 — 2026-10-19
+
+- linecat has its own DOI, 10.5281/zenodo.23487626 (all versions): About, the README and `CITATION.cff` cite it.
+
 ## 0.13.2 — 2026-10-19
 
 - No changes in the app. First release archived on Zenodo, which gives linecat a citable DOI; `CITATION.cff` has an abstract and keywords for it.

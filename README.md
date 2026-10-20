@@ -3,6 +3,7 @@
 [![tests](https://github.com/vahid-anari/linecat/actions/workflows/tests.yml/badge.svg)](https://github.com/vahid-anari/linecat/actions/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/linecat)](https://pypi.org/project/linecat/)
 [![Python](https://img.shields.io/pypi/pyversions/linecat)](https://pypi.org/project/linecat/)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.23487626-blue)](https://doi.org/10.5281/zenodo.23487626)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 **linecat** (Line Catalog Explorer) is a desktop viewer for spectral line catalogs
@@ -113,9 +114,15 @@ GitHub Release with that version's section of `CHANGELOG.md`.
 
 ## Citing
 
-If you use linecat in published work, please cite it; GitHub's **Cite this
-repository** button gives the reference (from `CITATION.cff`). Please also
-cite CDMS for the catalog data (see [Catalogs](#catalogs)).
+If you use linecat in published work, please cite it:
+
+> Anari, V. *linecat: a viewer for spectral line catalogs*. Zenodo.
+> https://doi.org/10.5281/zenodo.23487626
+
+This DOI always points to the latest version; each release also has its own DOI on
+Zenodo, for citing the exact version you used. GitHub's **Cite this repository**
+button gives the reference in other formats (from `CITATION.cff`). Please also cite
+CDMS for the catalog data (see [Catalogs](#catalogs)).
 
 ## License
 

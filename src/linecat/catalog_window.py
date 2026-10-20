@@ -182,7 +182,7 @@ class CatalogWindow(QMainWindow):
                 "Endres et al. 2016, J. Mol. Spectrosc. 327, 95. The CDMS documentation pages included with "
                 "the app are reproduced with credit to CDMS."),
             citation=(f"Anari, V. <i>linecat: a viewer for spectral line catalogs</i>, version {escape(APP.version)}. "
-                      '<a href="https://github.com/vahid-anari/linecat">github.com/vahid-anari/linecat</a>'),
+                      'Zenodo. <a href="https://doi.org/10.5281/zenodo.23487626">doi:10.5281/zenodo.23487626</a>'),
             missing_hint="From a clone, build it with sh tools/build_docs.sh (needs a TeX installation).",
         )
 

@@ -103,7 +103,7 @@ def test_help_menu_is_the_shared_one(window):
     assert window.menu.action("help_updates").shortcut().toString() == "Ctrl+U"
     about = window.help.about_html()
     assert "CDMS" in about and "PySide6" in about and "pandas" in about
-    assert "please cite" in about and "github.com/vahid-anari/linecat" in about
+    assert "please cite" in about and "doi.org/10.5281/zenodo.23487626" in about
 
 
 def test_app_icon_and_splash_image_ship():
