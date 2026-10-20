@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.2 — 2026-10-19
+
+- No changes in the app. First release archived on Zenodo, which gives linecat a citable DOI; `CITATION.cff` has an abstract and keywords for it.
+
 ## 0.13.1 — 2026-10-19
 
 - About asks you to cite linecat if you use it in published work, next to the CDMS references (sciwidgets 0.12.1).

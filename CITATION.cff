@@ -6,7 +6,21 @@ authors:
   - family-names: Anari
     given-names: Vahid
     orcid: "https://orcid.org/0000-0002-2464-3989"
-version: 0.13.1
+version: 0.13.2
 date-released: "2026-10-19"
 license: MIT
 repository-code: "https://github.com/vahid-anari/linecat"
+url: "https://pypi.org/project/linecat/"
+abstract: >-
+  Line Catalog Explorer (linecat) is a desktop application for spectral line
+  catalogs from CDMS: filter the lines of a molecule by frequency and quantum
+  numbers, sort and export the table, and draw energy-level diagrams of the
+  selected transitions for figures and LaTeX. Catalogs of OH, CH3OH, SiO and
+  NH3 are included.
+keywords:
+  - spectral line catalogs
+  - CDMS
+  - molecular spectroscopy
+  - energy-level diagrams
+  - astrochemistry
+  - PySide6
