@@ -72,7 +72,7 @@ A couple of seconds after it starts, \AppName{} asks PyPI in the background whet
 version exists; if so it shows what is new (from the release notes) and offers
 \menu{Update Now}, which runs \texttt{pipx upgrade linecat} or \texttt{pip install -U linecat},
 whichever matches the installation, and then offers a restart. Without an internet connection
-nothing is shown. \menu{Help\then Check for Updates\dots} checks on request and also reports when
+nothing is shown. \menu{Help\then Check for Updates\dots} (\key{Cmd+U}) checks on request and also reports when
 \AppName{} is up to date. In a terminal, \texttt{linecat update --check} shows whether there is a
 newer version, and \texttt{linecat update} installs it (it asks first). A copy installed from a
 clone with \texttt{pip install -e} is updated with \texttt{git pull} instead.
@@ -114,7 +114,9 @@ The \emph{Molecule} box shows a picture of the molecule, its name, the CDMS tag(
 entries, the partition function $Q$ at 300~K used for the line strengths, and the number of lines.
 \menu{Documentation} lists the CDMS documentation of the entries (for OH: $v=0$, 1 and 2,
 Figure~\ref{fig:molecule}); it is included with \AppName{} and opens without an internet connection.
-The general CDMS documents are under \menu{Help\then CDMS Documentation}.
+The general CDMS documents are under \menu{Help\then CDMS Documentation}. The User Guide opens with
+\key{Cmd+?}, and \menu{Help\then About Line Catalog Explorer} shows the version, the CDMS credits and the
+libraries the app is built on.
 
 \begin{figure}[h]
   \centering

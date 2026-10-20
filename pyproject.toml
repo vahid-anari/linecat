@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linecat"
-version = "0.12.0"
+version = "0.13.0"
 description = "Line Catalog Explorer: filter CDMS spectral line catalogs and draw energy-level diagrams"
 readme = "README.md"
 license = "MIT"
@@ -32,7 +32,7 @@ dependencies = [
     "matplotlib>=3.7",
     "numpy>=1.24",
     "pandas>=2.0",
-    "sciwidgets[table]~=0.11.0",
+    "sciwidgets[table]~=0.12.0",
 ]
 
 [project.optional-dependencies]

@@ -54,7 +54,7 @@ def test_help_menu_check(window, monkeypatch):
     messages = []
     monkeypatch.setattr(update_ui, "show_information", lambda title, text, **k: messages.append(text))
     monkeypatch.setattr(update_ui.UpdateChecker, "check", lambda self: self.upToDate.emit())
-    window.on_menu_action(None, "check_updates", False)
+    window.on_menu_action(None, "help_updates", False)
     assert messages and "is the latest version" in messages[0]
     messages.clear()
     window.check_for_updates(manual=False)                              # quiet at start-up

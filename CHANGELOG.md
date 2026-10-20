@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.0 — 2026-10-19
+
+- The Help menu is the same as in the author's other apps (Maxwell Bloch Studio, daftarche), from sciwidgets 0.12: User Guide (⌘?), CDMS Documentation, Check for Updates… (⌘U), and About Line Catalog Explorer (was "About linecat"), which now also lists the libraries the app is built on, with their versions and licenses.
+- Needs sciwidgets 0.12.
+
 ## 0.12.0 — 2026-10-17
 
 - The launcher (`linecat install-app`) and the update check (`linecat update`, Help ▸ Check for Updates…) now come from sciwidgets 0.11 (`sciwidgets.app`), shared with Maxwell Bloch Studio; `launcher.py`, `update.py` and `update_ui.py` are gone. Nothing changes for users; installed launchers keep working.

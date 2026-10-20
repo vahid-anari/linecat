@@ -11,12 +11,12 @@ from PySide6.QtCore import QSettings, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
 
-from sciwidgets.dialogs import AskResult, ask_question, show_about_dialog, show_warning
+from sciwidgets.app.help import AppHelp, Document, DocumentMenu
+from sciwidgets.dialogs import AskResult, ask_question, show_warning
 from sciwidgets.labels import set_latex_enabled
 from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
-from linecat import __version__
 from linecat.builtin import builtin_csv, builtin_dir, ensure_builtin_catalogs, general_docs, user_guide
 from linecat.cdms import species_in_folder
 from linecat.convert_dialog import convert_with_progress
@@ -24,7 +24,7 @@ from linecat.diagram import DiagramWindow
 from linecat.dialogs import LARGE_DEFAULT, LargeDiagramDialog, large_diagram_limit
 from linecat.filters import FrequencyRange, QuantumFilters
 from linecat.headers import TABLE_FORMATS, pretty_header, table_alignment, table_background
-from linecat.molecule_box import MoleculeBox, open_file
+from linecat.molecule_box import MoleculeBox
 from linecat.molecules import REGISTRY, MoleculeInfo
 from linecat.widgets import APP_STYLE_SHEET, NATIVE_MENU_BAR, busy, latex_available
 
@@ -80,7 +80,7 @@ class CatalogWindow(QMainWindow):
         self.setWindowTitle("linecat")
 
         self.settings = QSettings('linecat', 'linecat')
-        self._updates = None  # sciwidgets.app.update_ui.AppUpdates, made at the first check
+        self.help = self._make_help()
         self.latex_available = latex_available()
         self.use_latex = self.latex_available and self.settings.value('view/use_latex', True, type=bool)
         set_latex_enabled(self.use_latex)
@@ -165,17 +165,27 @@ class CatalogWindow(QMainWindow):
             "Transitions": [
                 {"id": "show_diagram", "text": "Show Energy-Level Diagram", "shortcut": "Ctrl+D", "enabled": False},
             ],
-            "Help": [
-                {"id": "user_guide", "text": "User Guide"},
-                {"submenu": "CDMS Documentation",
-                 "items": [{"id": f"gdoc_{i}", "text": path.stem} for i, path in enumerate(general_docs())]},
-                {"id": "sep"},
-                {"id": "check_updates", "text": "Check for Updates…"},
-                {"id": "about", "text": "About linecat"},
-            ],
+            "Help": self.help.menu_items(),
         }
 
+    def _make_help(self):
+        """The Help menu shared with the other apps (sciwidgets.app.help), with the CDMS documents."""
+        from linecat.app_info import APP
+
+        cdms = DocumentMenu("CDMS Documentation", [Document(path.stem, path) for path in general_docs()])
+        return AppHelp(
+            self, APP, user_guide=user_guide(), documents=[cdms] if cdms.documents else [], author="Vahid Anari",
+            about_extra=(
+                'Catalog data: <a href="https://cdms.astro.uni-koeln.de/">CDMS</a>, Universität zu Köln — '
+                "please cite Müller et al. 2001, A&amp;A 370, L49; Müller et al. 2005, J. Mol. Struct. 742, 215; "
+                "Endres et al. 2016, J. Mol. Spectrosc. 327, 95. The CDMS documentation pages included with "
+                "the app are reproduced with credit to CDMS."),
+            missing_hint="From a clone, build it with sh tools/build_docs.sh (needs a TeX installation).",
+        )
+
     def on_menu_action(self, _menu_path, action_id, checked):
+        if self.help.handle(action_id):
+            return
         if action_id == 'builtin_folder':
             self.show_builtin_folder()
         elif action_id.startswith('builtin_'):
@@ -206,17 +216,6 @@ class CatalogWindow(QMainWindow):
             self.set_use_latex(checked)
         elif action_id == 'show_diagram':
             self.show_button()
-        elif action_id == 'user_guide':
-            self.open_user_guide()
-        elif action_id.startswith('gdoc_'):
-            docs = general_docs()
-            index = int(action_id.split('_')[1])
-            if index < len(docs):
-                open_file(docs[index])
-        elif action_id == 'check_updates':
-            self.check_for_updates(manual=True)
-        elif action_id == 'about':
-            self.show_about()
 
     def rebuild_menus(self):
         """Rebuild the menu bar (after a change of the recent list) and restore the dynamic states."""
@@ -280,14 +279,6 @@ class CatalogWindow(QMainWindow):
         if self.prepare_builtin_catalogs():
             self.load_file(str(builtin_csv(code)))
 
-    def open_user_guide(self):
-        guide = user_guide()
-        if guide.is_file():
-            open_file(guide)
-        else:
-            show_warning("User Guide", "The User Guide has not been built.",
-                         "Run tools/build_docs.sh in the linecat folder (needs a TeX installation).", parent=self)
-
     def show_builtin_folder(self):
         folder = builtin_dir()
         folder.mkdir(parents=True, exist_ok=True)
@@ -296,26 +287,7 @@ class CatalogWindow(QMainWindow):
     # ----- updates -----
     def check_for_updates(self, manual=False):
         """Ask PyPI for a newer linecat; ``manual`` (Help menu) also reports "up to date" and failures."""
-        if self._updates is None:
-            from sciwidgets.app.update_ui import AppUpdates
-
-            from linecat.app_info import APP
-
-            self._updates = AppUpdates(self, APP)
-        self._updates.check(manual)
-
-    def show_about(self):
-        show_about_dialog(
-            "About linecat",
-            f"<p><b>linecat</b> {__version__}<br>Viewer for CDMS/JPL spectral line catalogs.</p>"
-            "<p>Vahid Anari — MIT License<br>"
-            '<a href="https://github.com/vahid-anari/linecat">github.com/vahid-anari/linecat</a></p>'
-            '<p>Catalog data: <a href="https://cdms.astro.uni-koeln.de/">CDMS</a>, Universität zu Köln — '
-            "please cite Müller et al. 2001, A&amp;A 370, L49; Müller et al. 2005, J. Mol. Struct. 742, 215; "
-            "Endres et al. 2016, J. Mol. Spectrosc. 327, 95. The CDMS documentation pages included with "
-            "linecat are reproduced with credit to CDMS.</p>",
-            parent=self,
-        )
+        self.help.updates.check(manual)
 
     def convert_catalogs(self):
         """Convert the CDMS .cat files of every registered species found in a folder to CSV."""

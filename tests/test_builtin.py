@@ -77,20 +77,32 @@ def test_molecule_box(window, builtin_folder, monkeypatch):
     monkeypatch.setattr(mb.QDesktopServices, "openUrl", lambda url: opened.append(url))
     box.docs_menu.actions()[0].trigger()
     assert opened and "OH, v=0.pdf" in str(opened[0].toLocalFile() if hasattr(opened[0], "toLocalFile") else opened[0])
-    assert window.menu.action("gdoc_0") is not None
+    cdms = window.menu.action("help_doc_1")                 # help_doc_0 is the User Guide
+    assert cdms.text() == window.help.menu_items()[1]["items"][0]["text"]
 
 
 def test_help_user_guide(window, monkeypatch):
-    import linecat.catalog_window as cw
+    from sciwidgets.app import help as app_help
+
     from linecat.builtin import user_guide
 
     assert user_guide().name == "user_guide.pdf"
-    assert window.menu.action("user_guide") is not None
+    assert window.menu.action("help_doc_0").text() == "User Guide"
     opened, warned = [], []
-    monkeypatch.setattr(cw, "open_file", lambda path: opened.append(path))
-    monkeypatch.setattr(cw, "show_warning", lambda *a, **k: warned.append(a))
-    window.on_menu_action("Help", "user_guide", False)
-    assert (opened == [user_guide()]) != bool(warned)  # opens the PDF, or explains how to build it
+    monkeypatch.setattr(app_help.QDesktopServices, "openUrl", lambda url: opened.append(url.toLocalFile()))
+    monkeypatch.setattr(app_help, "show_warning", lambda *a, **k: warned.append(a))
+    window.on_menu_action("Help", "help_doc_0", False)
+    assert (opened == [str(user_guide())]) != bool(warned)  # opens the PDF, or explains how to build it
+
+
+def test_help_menu_is_the_shared_one(window):
+    """Same order and shortcuts as the other apps; About names the app and lists the libraries."""
+    texts = [item.get("text", item.get("submenu", item.get("id"))) for item in window.help.menu_items()]
+    assert texts == ["User Guide", "CDMS Documentation", "sep", "Check for Updates…", "sep",
+                     "About Line Catalog Explorer"]
+    assert window.menu.action("help_updates").shortcut().toString() == "Ctrl+U"
+    about = window.help.about_html()
+    assert "CDMS" in about and "PySide6" in about and "pandas" in about
 
 
 def test_app_icon_and_splash_image_ship():

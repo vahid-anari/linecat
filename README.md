@@ -43,7 +43,7 @@ This adds Line Catalog Explorer to your Applications folder (macOS), the Start m
 (Windows) or the applications menu (Linux), with its own icon. It starts the linecat
 of the Python you ran the command with, and keeps working after updates.
 
-To update, use Help → Check for Updates… in the app (it also checks quietly at
+To update, use Help → Check for Updates… (⌘U) in the app (it also checks quietly at
 start-up) or `linecat update` in a terminal.
 
 For development, install from a clone: `git clone https://github.com/vahid-anari/linecat.git`,
