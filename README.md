@@ -129,4 +129,5 @@ Vahid Anari ·
 
 Related projects: [mbsolver](https://github.com/vahid-anari/mbsolver) ·
 [sciwidgets](https://github.com/vahid-anari/sciwidgets) ·
-[Maxwell Bloch Studio](https://github.com/vahid-anari/maxwell-bloch-studio)
+[Maxwell Bloch Studio](https://github.com/vahid-anari/maxwell-bloch-studio) ·
+[Daftarche](https://github.com/vahid-anari/daftarche)
