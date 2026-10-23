@@ -10,11 +10,12 @@ from pathlib import Path
 import pandas as pd
 from PySide6.QtCore import QSettings, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QFileDialog, QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
 
 from sciwidgets.app.help import AppHelp, Document, DocumentMenu
 from sciwidgets.dialogs import AskResult, ask_question, show_warning
 from sciwidgets.labels import set_latex_enabled
+from sciwidgets.style import set_color_scheme
 from sciwidgets.table import DataFrameView
 from sciwidgets.window import MenuBarController, StatusBarController, center_on_screen
 
@@ -27,7 +28,10 @@ from linecat.filters import FrequencyRange, QuantumFilters
 from linecat.headers import TABLE_FORMATS, pretty_header, table_alignment, table_background
 from linecat.molecule_box import MoleculeBox
 from linecat.molecules import REGISTRY, MoleculeInfo
-from linecat.widgets import APP_STYLE_SHEET, NATIVE_MENU_BAR, busy, latex_available
+from linecat.widgets import (
+    APP_STYLE_SHEET, APPEARANCE_KEY, APPEARANCES, NATIVE_MENU_BAR, appearance_menu, busy, latex_available,
+    show_appearance_checks,
+)
 
 __all__ = ["APP_STYLE_SHEET", "CatalogWindow", "latex_available"]
 
@@ -81,6 +85,7 @@ class CatalogWindow(QMainWindow):
         self.setWindowTitle("linecat")
 
         self.settings = QSettings('linecat', 'linecat')
+        set_color_scheme(QApplication.instance(), self.appearance())
         self.help = self._make_help()
         self.latex_available = latex_available()
         self.use_latex = self.latex_available and self.settings.value('view/use_latex', True, type=bool)
@@ -162,6 +167,8 @@ class CatalogWindow(QMainWindow):
                 {"id": "use_latex", "text": "Use LaTeX for Labels", "checkable": True, "checked": self.use_latex,
                  "enabled": self.latex_available},
                 {"id": "large_limit", "text": "Large Diagram Warning…"},
+                {"id": "sep"},
+                appearance_menu(self.appearance()),
             ],
             "Transitions": [
                 {"id": "show_diagram", "text": "Show Energy-Level Diagram", "shortcut": "Ctrl+D", "enabled": False},
@@ -219,6 +226,28 @@ class CatalogWindow(QMainWindow):
             self.set_use_latex(checked)
         elif action_id == 'show_diagram':
             self.show_button()
+        elif action_id.startswith('appearance_'):
+            self.set_appearance(action_id.removeprefix('appearance_'))
+
+    # ----- light and dark mode -----
+    def appearance(self):
+        """The colour scheme chosen under View ▸ Appearance: "system", "light" or "dark"."""
+        value = self.settings.value(APPEARANCE_KEY, 'system', type=str)
+        return value if value in APPEARANCES else 'system'
+
+    def set_appearance(self, scheme):
+        """Show the app in the system's colours, or always light or dark, and remember the choice."""
+        if scheme not in APPEARANCES:
+            return
+        set_color_scheme(QApplication.instance(), scheme)
+        self.settings.setValue(APPEARANCE_KEY, scheme)
+        for window in QApplication.topLevelWidgets():  # this window and the diagram windows
+            if hasattr(window, 'show_appearance'):
+                window.show_appearance(scheme)
+
+    def show_appearance(self, scheme):
+        """Check ``scheme`` under View ▸ Appearance."""
+        show_appearance_checks(self.menu, scheme)
 
     def rebuild_menus(self):
         """Rebuild the menu bar (after a change of the recent list) and restore the dynamic states."""

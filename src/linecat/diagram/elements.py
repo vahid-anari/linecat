@@ -28,6 +28,51 @@ BBOX_STYLES = {
 }
 
 
+# The diagram's colours in light and dark mode. Light is the printed figure (the PDF is always light);
+# dark keeps the hues, with lighter lines and text and dark label boxes, as the sciwidgets plots do.
+DIAGRAM_COLORS = {
+    False: {
+        'face': 'white',
+        'ink': 'k',
+        'level_selected': 'g',
+        'trans': TRANS_COLOR,
+        'bbox': BBOX_STYLES,
+    },
+    True: {
+        'face': '#2a2a2a',
+        'ink': '#dedede',
+        'level_selected': '#5ccf55',
+        'trans': {'pri': ['#ec6a5a', '#ffaa9e'], 'sec': ['#749ffb', '#9fdcff']},
+        'bbox': {
+            'nu_tau_label': dict(BBOX_STYLES['nu_tau_label'], facecolor='#33301a', edgecolor='#ff8c00'),
+            'lvl': dict(BBOX_STYLES['lvl'], facecolor='#1b2e1b', edgecolor='#51a34b'),
+            'pri-trs': dict(BBOX_STYLES['pri-trs'], facecolor='#4a1f26', edgecolor='#ec6a5a'),
+            'sec-trs': dict(BBOX_STYLES['sec-trs'], facecolor='#16324a', edgecolor='#749ffb'),
+        },
+    },
+}
+
+
+def diagram_colors(dark: bool) -> dict:
+    """The colours of the diagram in dark (``True``) or light (``False``) mode."""
+    return DIAGRAM_COLORS[bool(dark)]
+
+
+def set_figure_dark(fig, dark: bool) -> None:
+    """Show a diagram figure (made by the diagram window) in dark or light colours, keeping its highlights."""
+    colors = diagram_colors(dark)
+    fig.set_facecolor(colors['face'])
+    for line in getattr(fig, 'level_lines', ()):
+        line.set_dark(dark)
+    for arrow in getattr(fig, 'diagram_counts', ((),))[0]:
+        arrow.set_dark(dark)
+    label = getattr(fig, 'hover_label', None)
+    if label is not None:
+        label.set_color(colors['ink'])
+        label.set_bbox(colors['bbox']['nu_tau_label'])
+    fig.diagram_dark = bool(dark)
+
+
 
 def tex_fontsize_factor():
     if mpl.rcParams['text.usetex']:
@@ -174,8 +219,10 @@ def assign_lvls_y_positions(df, real_size_factor=0.):
 
 
 class LevelLine:
-    def __init__(self, ax, lvl_label, e_label, w=0, y=0, header=False, molecule_name=""):
+    def __init__(self, ax, lvl_label, e_label, w=0, y=0, header=False, molecule_name="", dark=False):
         self.ax = ax
+        self.colors = diagram_colors(dark)
+        self.state = (False, None)  # the last selected() call
         self.lvl_label = lvl_label
         self.e_label = e_label
         self.w = w
@@ -186,19 +233,20 @@ class LevelLine:
         # labels a fixed distance in points from the line ends, so the margins can be fitted to them
         self.lvl = ax.text(0, y, lvl_label,
                            ha="right", va="center",
-                           fontsize=self.font_size, color='k',
+                           fontsize=self.font_size, color=self.colors['ink'],
                            transform=offset_copy(transform, fig=ax.figure, x=-LABEL_GAP_PT, units='points'))
         self.energy = ax.text(1, y, e_label,
                               ha="left", va="center",
-                              fontsize=self.font_size, color='k',
+                              fontsize=self.font_size, color=self.colors['ink'],
                               transform=offset_copy(transform, fig=ax.figure, x=LABEL_GAP_PT, units='points'))
+        self.name = None
         if header:
-            ax.text(0.5, y, molecule_name,
-                    ha="center", va="center",
-                    fontsize=self.font_size * 1.5, color='k',
-                    transform=transform)
+            self.name = ax.text(0.5, y, molecule_name,
+                                ha="center", va="center",
+                                fontsize=self.font_size * 1.5, color=self.colors['ink'],
+                                transform=transform)
         if not header:
-            self.line, = ax.plot([0, w], [y, y], color='k', linewidth=1, zorder=0)
+            self.line, = ax.plot([0, w], [y, y], color=self.colors['ink'], linewidth=1, zorder=0)
 
     def set_font_size(self):
         font_size = 14 * tex_fontsize_factor()
@@ -206,25 +254,36 @@ class LevelLine:
             font_size += 2
         return font_size
 
+    def set_dark(self, dark):
+        """Dark or light colours; a highlighted level stays highlighted."""
+        self.colors = diagram_colors(dark)
+        for text in (self.lvl, self.energy, self.name):
+            if text is not None:
+                text.set_color(self.colors['ink'])
+        if not self.header:
+            self.selected(*self.state)
+
     def selected(self, selected, trs=None):
+        self.state = (selected, trs)
+        bboxes = self.colors['bbox']
         if trs is not None:
             if trs == 'pri':
-                bbox = BBOX_STYLES['pri-trs']
+                bbox = bboxes['pri-trs']
             else:
-                bbox = BBOX_STYLES['sec-trs']
-            self.line.set(color=TRANS_COLOR[trs][1], linewidth=3, zorder=2)
+                bbox = bboxes['sec-trs']
+            self.line.set(color=self.colors['trans'][trs][1], linewidth=3, zorder=2)
             self.lvl.set(fontsize=self.font_size + 2, zorder=2)
             self.energy.set(fontsize=self.font_size + 2, zorder=2)
             self.lvl.set_bbox(bbox)
             self.energy.set_bbox(bbox)
         elif selected:
-            self.line.set(color='g', linewidth=3, zorder=2)
+            self.line.set(color=self.colors['level_selected'], linewidth=3, zorder=2)
             self.lvl.set(fontsize=self.font_size + 2, zorder=2)
             self.energy.set(fontsize=self.font_size + 2, zorder=2)
-            self.lvl.set_bbox(BBOX_STYLES['lvl'])
-            self.energy.set_bbox(BBOX_STYLES['lvl'])
+            self.lvl.set_bbox(bboxes['lvl'])
+            self.energy.set_bbox(bboxes['lvl'])
         else:
-            self.line.set(color='k', linewidth=1, zorder=0)
+            self.line.set(color=self.colors['ink'], linewidth=1, zorder=0)
             self.lvl.set(fontsize=self.font_size, zorder=0)
             self.energy.set(fontsize=self.font_size, zorder=0)
             self.lvl.set_bbox(None)
@@ -238,7 +297,7 @@ class LevelLine:
 
 
 class TransitionArrow:
-    def __init__(self, ax, x, y_up, y_down, w, lvl_idx, upper_lvl, lower_lvl, nu, tau, type_, number):
+    def __init__(self, ax, x, y_up, y_down, w, lvl_idx, upper_lvl, lower_lvl, nu, tau, type_, number, dark=False):
         self.x = x
         self.x_left = x - w / 2.
         self.x_right = x + w / 2.
@@ -251,7 +310,9 @@ class TransitionArrow:
         self.linewidth = 0.01
         self.type = type_
         self.number = number
-        self.color = TRANS_COLOR[type_]
+        self.face = diagram_colors(dark)['face']
+        self.color = diagram_colors(dark)['trans'][type_]
+        self.is_selected = False
         self.label = hover_text(nu, tau)
         self.arrow = FancyArrowPatch(
             (x, y_up), (x, y_down),
@@ -273,10 +334,17 @@ class TransitionArrow:
             zorder=1,
             bbox=dict(
                 boxstyle="circle,pad=0.3",
-                fc="white", ec=self.color[0],
+                fc=self.face, ec=self.color[0],
                 lw=1
             )
         )
+
+    def set_dark(self, dark):
+        """Dark or light colours; a highlighted arrow stays highlighted."""
+        colors = diagram_colors(dark)
+        self.face = colors['face']
+        self.color = colors['trans'][self.type]
+        self.selected(self.is_selected)
 
     def contain(self, x, y):
         if x is None or y is None:
@@ -284,6 +352,7 @@ class TransitionArrow:
         return self.x_left <= x <= self.x_right and self.y_down <= y < self.y_up
 
     def selected(self, selected):
+        self.is_selected = bool(selected)
         if selected:
             self.arrow.set_color(self.color[1])
             self.arrow.set_linewidth(2)
@@ -291,7 +360,7 @@ class TransitionArrow:
             self.number_text.set_bbox(
                 dict(
                     boxstyle="circle,pad=0.3",
-                    fc="white", ec=self.color[1],
+                    fc=self.face, ec=self.color[1],
                     lw=2
                 )
             )
@@ -302,7 +371,7 @@ class TransitionArrow:
             self.number_text.set_bbox(
                 dict(
                     boxstyle="circle,pad=0.3",
-                    fc="white", ec=self.color[0],
+                    fc=self.face, ec=self.color[0],
                     lw=1
                 )
             )

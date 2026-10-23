@@ -14,19 +14,37 @@ NATIVE_MENU_BAR = False  # menus inside each window (on macOS the global bar wou
 
 GROUPBOX_MARGIN = [7, 10, 7, 4]  # [left, top, right, bottom]
 
+APPEARANCE_KEY = 'view/appearance'
+APPEARANCES = {"system": "Same as System", "light": "Light", "dark": "Dark"}  # View ▸ Appearance
 
-# Appended to the sciwidgets style sheet by linecat.main (same rules as Maxwell Bloch Studio)
+
+def appearance_menu(current):
+    """The View ▸ Appearance submenu (main and diagram windows), with ``current`` checked."""
+    return {"id": "appearance", "submenu": "Appearance", "items": [
+        {"id": f"appearance_{scheme}", "text": text, "checkable": True, "checked": scheme == current}
+        for scheme, text in APPEARANCES.items()
+    ]}
+
+
+def show_appearance_checks(menu, current):
+    """Check ``current`` in a window's View ▸ Appearance submenu."""
+    for name in APPEARANCES:
+        menu.set_checked(f"appearance_{name}", name == current)
+
+
+# Appended to the sciwidgets style sheet by linecat.main (same rules as Maxwell Bloch Studio); palette
+# colours, so the boxes follow light and dark mode
 APP_STYLE_SHEET = """
-    QStatusBar { border-top: 1px solid #999999; }
+    QStatusBar { border-top: 1px solid palette(mid); }
     QGroupBox {
         font-size: 16pt;
         font-family: "Times New Roman";
         font-weight: bold;
-        border: 1px solid #bcbcbc;
+        border: 1px solid palette(mid);
         border-radius: 6px;
         margin-top: 12px;
         padding-top: 8px;
-        background: white;
+        background: palette(base);
     }
     QGroupBox::title {
         subcontrol-origin: margin;

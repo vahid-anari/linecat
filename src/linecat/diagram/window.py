@@ -10,18 +10,19 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.transforms import offset_copy
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
-    QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QMainWindow, QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QFileDialog, QGroupBox, QHBoxLayout, QMainWindow, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from sciwidgets.dialogs import show_information, show_warning
+from sciwidgets.style import color_scheme, is_dark, set_color_scheme
 from sciwidgets.window import MenuBarController, center_on_screen
 
 from linecat.diagram.elements import (
-    BBOX_STYLES, H_STEPS, LevelLine, TransitionArrow, assign_lvls_y_positions, fit_side_margins, frequency_parts,
-    level_y_limits, size_to_content, tex_fontsize_factor,
+    H_STEPS, LevelLine, TransitionArrow, assign_lvls_y_positions, diagram_colors, fit_side_margins,
+    frequency_parts, level_y_limits, set_figure_dark, size_to_content, tex_fontsize_factor,
 )
 from linecat.diagram.export import latex_commands
 from linecat.diagram.latex_cache import prerender_latex
@@ -30,7 +31,10 @@ from linecat.diagram.table import (
     TransitionSelection, add_row, finish_frame, new_table_frame, transition_table_figure,
 )
 from linecat.molecules import MoleculeInfo
-from linecat.widgets import GROUPBOX_MARGIN, NATIVE_MENU_BAR, align_widgets, busy, make_slider
+from linecat.widgets import (
+    APPEARANCE_KEY, GROUPBOX_MARGIN, NATIVE_MENU_BAR, align_widgets, appearance_menu, busy, make_slider,
+    show_appearance_checks,
+)
 
 
 HOVER_FONT_SIZE = 16
@@ -77,6 +81,8 @@ class DiagramWindow(QMainWindow):
         self._lower_energy = dict(zip(self.df['lower lvl'], self.df['lower E exact']))
         self._upper_energy = dict(zip(self.df['upper lvl'][::-1], self.df['upper E exact'][::-1]))
         self.tabs_content = []
+        self._dark = is_dark()
+        self._scheme_check_pending = False
         # Tabs
         self.tabs = QTabWidget()
         self.tabs.setTabsClosable(True)
@@ -115,6 +121,8 @@ class DiagramWindow(QMainWindow):
                 {"id": "secondary", "text": "Secondary Transitions", "checkable": True},
                 {"id": "use_latex", "text": "Use LaTeX for Rendering", "checkable": True,
                  "enabled": self.latex_available},
+                {"id": "sep"},
+                appearance_menu(color_scheme()),
             ],
         }, native_menubar=NATIVE_MENU_BAR)
         self.menu.actionTriggered.connect(self.on_menu_action)
@@ -176,20 +184,48 @@ class DiagramWindow(QMainWindow):
             path += ".pdf"
         self.settings.setValue('paths/pdf_dir', str(Path(path).parent))
 
-        # Grab the figure from the current tab and save
+        # Grab the figure from the current tab and save it, always in the light (printed) colours
         idx = self.tabs.currentIndex()
         tab_content = self.tabs_content[idx]
         comps = tab_content.get_comps()
+        fig = comps['fig']
         with mpl.rc_context({"text.usetex": tab_content.use_latex_checkbox}):
             table_fig = transition_table_figure(comps['table df'])
         if tab_content.use_latex_checkbox:
             prerender_latex(self, [table_fig])
+        dark = getattr(fig, 'diagram_dark', False)
         try:
+            set_figure_dark(fig, False)
             with PdfPages(path) as pdf:
-                pdf.savefig(comps['fig'])
+                pdf.savefig(fig)
                 pdf.savefig(table_fig)
         finally:
             plt.close(table_fig)
+            if dark:
+                set_figure_dark(fig, True)
+                fig.canvas.draw_idle()
+
+    # ----- light and dark mode -----
+    def changeEvent(self, event):
+        """Follow a switch between light and dark mode (checked from the event loop, not in the middle of it)."""
+        super().changeEvent(event)
+        if event.type() == QEvent.PaletteChange and not self._scheme_check_pending:
+            self._scheme_check_pending = True
+            QTimer.singleShot(0, self, self._check_scheme)
+
+    def _check_scheme(self):
+        self._scheme_check_pending = False
+        dark = is_dark()
+        if dark != self._dark:
+            self.set_dark(dark)
+
+    def set_dark(self, dark):
+        """Show every diagram of every tab in dark or light colours."""
+        self._dark = bool(dark)
+        for tab_content in self.tabs_content:
+            for fig in tab_content.figures():
+                set_figure_dark(fig, self._dark)
+                fig.canvas.draw_idle()
 
     def change_y_positions(self, event):
         coarse_scale_factor = self.coarse_scale_slider.get_value() / 100.
@@ -221,6 +257,22 @@ class DiagramWindow(QMainWindow):
             self.fit_checkbox.setChecked(checked)
         elif action_id in ('secondary', 'use_latex'):
             self.on_view_toggled(action_id, checked)
+        elif action_id.startswith('appearance_'):
+            self.choose_appearance(action_id.removeprefix('appearance_'))
+
+    def choose_appearance(self, scheme):
+        """View ▸ Appearance: as in the main window, which remembers it and updates every window's menu."""
+        main = self.parent()
+        if hasattr(main, 'set_appearance'):
+            main.set_appearance(scheme)
+        else:
+            set_color_scheme(QApplication.instance(), scheme)
+            self.settings.setValue(APPEARANCE_KEY, scheme)
+            self.show_appearance(scheme)
+
+    def show_appearance(self, scheme):
+        """Check ``scheme`` under View ▸ Appearance."""
+        show_appearance_checks(self.menu, scheme)
 
     def on_view_toggled(self, action_id, checked):
         idx = self.tabs.currentIndex()
@@ -516,6 +568,8 @@ class DiagramWindow(QMainWindow):
     def _build_trs_fig(self, lvls_df, pri_trs_df, sec_trs_df, use_latex):
         tr_arrows = []
         lvls = []
+        dark = is_dark()
+        colors = diagram_colors(dark)
         exported = []  # (type, number, row) for the LaTeX commands
         N_LVLs = len(lvls_df)
         ys = assign_lvls_y_positions(lvls_df)
@@ -523,7 +577,8 @@ class DiagramWindow(QMainWindow):
         Y_MIN, Y_MAX = level_y_limits(ys)
 
         def draw_level_line(ax, level_label, energy_label, w=0, y=0, header=False, molecule_name=""):
-            return LevelLine(ax, level_label, energy_label, w=w, y=y, header=header, molecule_name=molecule_name)
+            return LevelLine(ax, level_label, energy_label, w=w, y=y, header=header, molecule_name=molecule_name,
+                             dark=dark)
 
         def draw_transition(ax, tr, x, h_step, type_, number):
             upper_lvl = lvls_df[lvls_df['level'] == tr['upper lvl']]
@@ -532,7 +587,7 @@ class DiagramWindow(QMainWindow):
             y_down = lower_lvl['y'].values[0]
             lvl_idx = [upper_lvl['y'].index[0], lower_lvl['y'].index[0]]
             return TransitionArrow(ax, x, y_up, y_down, h_step, lvl_idx, tr['upper lvl'], tr['lower lvl'],
-                                   tr['nu'], tr['tau'], type_, number)
+                                   tr['nu'], tr['tau'], type_, number, dark=dark)
 
         def make_fig():
             fig, axes = plt.subplots(2, 1, sharex=True,
@@ -540,7 +595,7 @@ class DiagramWindow(QMainWindow):
                                      dpi=100,
                                      gridspec_kw={'height_ratios': [1, N_LVLs + 1]})
             fig.subplots_adjust(top=0.97, bottom=0.02, left=0.2, right=0.8, hspace=0.0)
-            fig.set_facecolor('white')
+            fig.set_facecolor(colors['face'])
             return fig, axes
 
         def check_sec_trs(lvl):
@@ -692,11 +747,13 @@ class DiagramWindow(QMainWindow):
         fig.diagram_counts = (tr_arrows, N_LVLs, WIDTH)  # for size_to_content
         # Hover label
         nu_tau_label = ax_line.text(0, 0, '', ha="left", va="bottom", fontsize=HOVER_FONT_SIZE * tex_fontsize_factor(),
-                                    color="k", zorder=3,
+                                    color=colors['ink'], zorder=3,
                                     linespacing=1.4, multialignment="left",
                                     transform=offset_copy(ax_line.transData, fig=fig, x=HOVER_OFFSET_PX[0],
                                                           y=HOVER_OFFSET_PX[1], units='dots'),
-                                    bbox=BBOX_STYLES['nu_tau_label'])
+                                    bbox=colors['bbox']['nu_tau_label'])
+        fig.hover_label = nu_tau_label
+        fig.diagram_dark = dark
         fig.canvas.mpl_connect("motion_notify_event", on_move)
         fig.canvas.mpl_connect("button_press_event", on_press)
         ax_line.set_xlim(0, WIDTH)

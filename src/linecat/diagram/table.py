@@ -5,7 +5,7 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib import colors as mcolors
-from PySide6.QtCore import QItemSelection, QItemSelectionModel, QObject, Signal
+from PySide6.QtCore import QEvent, QItemSelection, QItemSelectionModel, QObject, QTimer, Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QAbstractItemView
 
@@ -72,11 +72,7 @@ class TransitionTable(DataFrameView):
         super().__init__(parent)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        # rows highlighted from the diagram look the same whether or not the table has focus
-        palette = self.palette()
-        for role in (QPalette.Highlight, QPalette.HighlightedText):
-            palette.setColor(QPalette.Inactive, role, palette.color(QPalette.Active, role))
-        self.setPalette(palette)
+        self._same_highlight_inactive()
         self.set_frame(
             table_df[COLUMNS].copy(),
             formats=FORMATS,
@@ -86,6 +82,22 @@ class TransitionTable(DataFrameView):
         )
         self._quiet = False
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
+
+    def _same_highlight_inactive(self) -> None:
+        """Rows highlighted from the diagram look the same whether or not the table has focus."""
+        palette = self.palette()
+        roles = (QPalette.Highlight, QPalette.HighlightedText)
+        if all(palette.color(QPalette.Inactive, r) == palette.color(QPalette.Active, r) for r in roles):
+            return
+        for role in roles:
+            palette.setColor(QPalette.Inactive, role, palette.color(QPalette.Active, role))
+        self.setPalette(palette)
+
+    def changeEvent(self, event) -> None:
+        """After a switch between light and dark mode, the new highlight colours (from the event loop)."""
+        super().changeEvent(event)
+        if event.type() == QEvent.PaletteChange:
+            QTimer.singleShot(0, self, self._same_highlight_inactive)
 
     def natural_width(self) -> int:
         """Width that shows every column without a horizontal scroll bar."""

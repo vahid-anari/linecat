@@ -86,7 +86,8 @@ class MoleculeBox(QGroupBox):
         self.info = None
         self.picture.load(b"")
         self.name.set_text("")
-        self.details.setText('<span style="color:#9a9a9a">No catalog loaded</span>')
+        self.details.setText("No catalog loaded")
+        self.details.setEnabled(False)  # grey, in light and dark mode
         self.docs_menu.clear()
         self.docs_button.setEnabled(False)
 
@@ -106,6 +107,7 @@ class MoleculeBox(QGroupBox):
         old.deleteLater()
         tags = cdms_tags(info)
         tag_line = f"CDMS tags<br>{', '.join(tags)}" if len(tags) > 1 else f"CDMS tag {tags[0]}"
+        self.details.setEnabled(True)
         self.details.setText(
             f"{tag_line}<br>"
             f"Q({info.T:g} K) = {info.Q:,.2f}<br>"

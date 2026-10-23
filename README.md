@@ -20,6 +20,10 @@ quantum-number rules to `linecat/molecules.py`.
 
 <img src="https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/figures/diagram.png" width="700" alt="Energy-level diagram of the selected OH transitions with the transition table">
 
+![The energy-level diagram in use: hovering, secondary transitions, real scale and dark mode](https://raw.githubusercontent.com/vahid-anari/linecat/main/docs/figures/tour.gif)
+
+linecat follows the system's light or dark mode; View → Appearance makes it always light or dark.
+
 ## Installation
 
 Python 3.10 or newer. With [pipx](https://pipx.pypa.io/) (its own environment, recommended):
@@ -108,8 +112,10 @@ The window tests run offscreen with the small catalog in `tests/data/`.
 The User Guide sources are in `docs/` (`user_guide.tex`, with the equations in
 `equations.tex`); after a change, `sh tools/build_docs.sh` rebuilds it into
 `src/linecat/data/user_guide.pdf` (needs a TeX installation, e.g. MacTeX).
-The screenshots in `docs/figures/` are taken by hand on a Mac (⌘⇧4, Space,
-⌥-click for a window without shadow). Pushing a tag `vX.Y.Z` publishes a
+`python tools/figures.py` retakes the pictures and the animation in `docs/figures/`
+(`--list` for the names, `--dark` for dark mode), each in a fresh app with empty
+settings. On macOS the pictures have the window's title bar and shadow; the terminal
+needs Screen Recording permission. Pushing a tag `vX.Y.Z` publishes a
 GitHub Release with that version's section of `CHANGELOG.md`.
 
 ## Citing

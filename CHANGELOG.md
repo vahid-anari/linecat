@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.14.0 — 2026-10-23
+
+- Dark mode: linecat follows the system's light or dark appearance. View → Appearance (main and
+  diagram windows) chooses Same as System, Light or Dark, and is remembered.
+- The energy-level diagram follows it too: light lines and text on a dark background, with the
+  arrow, highlight and label colours made lighter for it. Save Figure as PDF always writes the
+  light (printed) colours.
+- Group boxes, the status bar and the "No catalog loaded" text take their colours from the
+  palette, so they suit both modes.
+- `tools/figures.py` retakes the pictures and the animation of the docs (sciwidgets.devtools);
+  the README shows the animation.
+- Needs sciwidgets 0.14.2.
+
 ## 0.13.4 — 2026-10-19
 
 - Help → Check for Updates… chosen while the automatic check at start-up was still running no longer shows the update notice twice (sciwidgets 0.12.2).
