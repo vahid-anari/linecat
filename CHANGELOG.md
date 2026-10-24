@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.1 — 2026-10-24
+
+- Needs sciwidgets 0.15.4: Help → Check for Updates… and the check at start-up use certifi's certificates, so they
+  also work with the python.org Python on macOS (before: CERTIFICATE_VERIFY_FAILED).
+
 ## 0.14.0 — 2026-10-23
 
 - Dark mode: linecat follows the system's light or dark appearance. View → Appearance (main and
