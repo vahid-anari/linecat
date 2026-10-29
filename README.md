@@ -141,5 +141,4 @@ Vahid Anari ·
 [LinkedIn](https://www.linkedin.com/in/vahid-anari/)
 
 Related projects: [mbsolver](https://github.com/vahid-anari/mbsolver) ·
-[sciwidgets](https://github.com/vahid-anari/sciwidgets) ·
-[Maxwell Bloch Studio](https://github.com/vahid-anari/maxwell-bloch-studio)
+[sciwidgets](https://github.com/vahid-anari/sciwidgets)
